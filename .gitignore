@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.envrc
+
+# Node
+node_modules/
+dist/
+build/
+
+# Env and secrets (never commit)
+.env
+.env.*
+!.env.example
+
+# Local data and runtime state
+data/
+*.db
+*.sqlite*
+*.log
