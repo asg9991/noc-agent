@@ -29,6 +29,23 @@ agent/    # Orchestrator: router L0/L1/L2, channel adapters (empty)
 docs/     # Design docs; arquitectura.md is canonical, plus propuesta-bosquejo.md and arquitectura-resumen.md
 ```
 
+## Orquestador
+
+Esqueleto Fase 3: router L0/L1/L2 + cliente Zabbix read-only + CLI.
+
+```bash
+cp .env.example .env        # completar con valores del operador, nunca commitear
+python3 -m agent.cli estado --help
+ZABBIX_URL=http://localhost/api_jsonrpc.php python3 -m agent.cli estado
+ZABBIX_URL=http://localhost/api_jsonrpc.php python3 -m agent.cli problemas
+python3 -m pytest -q
+```
+
+Niveles: `estado`/`ack` exactos = L0; lenguaje natural con keywords
+("hay alertas?", "cómo está el zabbix?") = L1 al mismo handler;
+resto = L2 stub ("no implementado, usar MCP"). Solo lectura: el CLI
+no escribe en Zabbix.
+
 ## Next steps
 
 - [x] Canonical architecture doc migrated here from zbx-in-docker (`docs/arquitectura.md`).
