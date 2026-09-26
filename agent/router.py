@@ -41,7 +41,13 @@ def handle_ack(client: ZabbixReader) -> str:
 
 
 def handle_l2(_text: str) -> str:
-    return L2_FALLBACK
+    try:
+        from mcp.catalog import all_tools
+
+        count = len(all_tools())
+    except Exception:
+        return L2_FALLBACK
+    return f"{L2_FALLBACK} (curated catalog: {count} tools, see mcp/curated-tools.json)"
 
 
 Handler = Callable[[ZabbixReader], str]
