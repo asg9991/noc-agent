@@ -30,18 +30,20 @@ La transición propuesta:
 ## 3. La solución
 
 Un servicio centralizado —alojado en infraestructura dedicada— al que el equipo
-accede desde Discord (canal primario) y, en etapas siguientes, otros canales:
+accede por dos caminos independientes al mismo hub: guardia por chat (Discord
+primario, Telegram después) y técnicos con agentes directos al MCP:
 
 ```text
-   Equipo técnico / operadores
-              │  Discord · Telegram · Web (futuro)
-              ▼
-      ┌─────────────────┐        ┌──────────────────────┐
-      │   NOC AGENT     │  MCP   │  Servicios de red    │
-      │  orquestación,  │◄──────►│  Zabbix (hoy)        │
-      │  permisos,      │        │  Fortinet (futuro)   │
-      │  auditoría      │        └──────────────────────┘
-      └─────────────────┘
+   Guardia                    Técnicos / ingeniería
+   Discord · Telegram         OpenCode · Claude Code · Codex
+        │  (adapter chat)              │  (MCP directo, sin chat)
+        ▼                              ▼
+       ┌─────────────────┐        ┌──────────────────────┐
+       │   NOC AGENT     │  MCP   │  Servicios de red    │
+       │  orquestación,  │◄──────►│  Zabbix (hoy)        │
+       │  permisos,      │        │  Fortinet (futuro)   │
+       │  auditoría      │        └──────────────────────┘
+       └─────────────────┘
 ```
 
 ### Características principales

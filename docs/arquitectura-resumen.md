@@ -18,7 +18,7 @@ verified tool data only — no data, no answer.
 | Integration bus | MCP (spec `2026-07-28`), streamable HTTP. One hub on a dedicated VM serves the bot, code-agent endpoints, and a future web UI. Adding a tool (e.g. Fortinet) = adding one MCP server, no per-consumer glue. |
 | Hub contents | `zabbix-mcp` (curated, read-only first) → future `fortinet-mcp`; central authz + rate limit. Full catalog (~237 tools) is never exposed; each stage/role gets a curated subset (~15–25 tools). |
 | Cost ladder | L0 deterministic: commands, buttons, templates (0 tokens). L1 classifier: intent + params, runs the same L0 handler on confidence (~$0). L2 agent: diagnosis and open NL (curated catalog only). L0/L1 bypass the tool catalog via a shared client library; every routing decision is logged for monthly cost reporting. |
-| Channels | Discord-first: alert embeds with buttons open per-incident threads; natural language inside threads; modals confirm writes. Abstract vocabulary (`reply`, `menu`, `form`, `ephemeral`) so Telegram reuses the orchestrator later. |
+| Channels | Discord-first para guardia (alertas→hilos, botones, ephemeral); Telegram después con el mismo vocabulario. Agentes de código (OpenCode/Claude/Codex) van directo al hub MCP sin pasar por el chat, con token y rol propios. |
 | Security | Network (hub on trusted nets only) → bearer token per consumer → OAuth 2.1 when crossing org boundaries. Channel-ID → profile (Operator / Technician / Admin) → capabilities; per-user Zabbix credentials as production goal. Dual audit: Zabbix native log + agent channel ledger. Sensitive writes need explicit modal confirmation. |
 
 ## Lab roadmap
