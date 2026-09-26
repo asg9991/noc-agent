@@ -48,7 +48,11 @@ Niveles (ver `agent/router.py`):
 
 ## 4. HUB MCP ZBX (thread [13])
 
-Estado actual (auditoría 2026-09-10):
+Decisión Fase 2 (2026-09-26, ratificada): initMAX `zabbix-mcp-server` v1.36.1
+(Python/FastMCP, AGPL-3.0, filtrado de tools por token, tokens read-only sin
+writes ni `raw_api_call`). Catálogo curado 15–25 tools por token, nunca completo.
+
+Estado actual:
 
 - `mcp/` en este repo está vacío (solo `.gitkeep`): el hub vive en `zbx-in-docker`
   (`docker/zabbix-mcp-config.toml`, build local, loopback `:8080`, `read_only`, ~35 tools).
@@ -56,7 +60,7 @@ Estado actual (auditoría 2026-09-10):
 
 Pendiente operativo:
 
-- [ ] Elegir server MCP Zabbix de Fase 2 y agregar `mcp/` client config curada (~15–25 tools, nunca catálogo completo).
+- [ ] Agregar `mcp/` client config curada (~15–25 tools, nunca catálogo completo) — desbloquea L2 real.
 - [ ] Doc de operación del hub + rotación de tokens (hoy solo hallazgo de auditoría, sin procedimiento).
 - [ ] Mover hub a VM dedicada fuera del compose (decisión de arquitectura).
 - [ ] Revisar permisos y secretos según auditoría (toml con token, `.env` group-writable, token Telegram en historial) — rotar y corregir permisos, sin pegar valores acá.
@@ -69,7 +73,7 @@ Pendiente operativo:
 
 ## 6. Gaps abiertos (para [31])
 
-1. `mcp/` client config ausente (bloquea L2 real; en lab se usa initMAX 1.36.1 como spike, selección formal pendiente Fase 2).
+1. `mcp/` client config ausente (bloquea L2 real; server ya elegido: initMAX 1.36.1, decisión Fase 2 del 2026-09-26).
 2. Adapter Discord ausente (Fase 4).
 3. Runbook de upgrade `instalacion.md` (en `zbx-in-docker/docs/`) parcial: 3 pasos sin backup/restore/verificación.
 4. Sin troubleshooting general, sin backups automáticos/offsite, sin rotación de secretos (los 3 faltantes de la auditoría).
