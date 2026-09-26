@@ -2,7 +2,7 @@
 
 Conversational operations assistant for infrastructure monitoring. It answers questions and runs controlled actions over observability tools (Zabbix first) from the channels the team already uses (Discord first, Telegram later).
 
-> **Status: scaffold.** No agent code yet. Canonical design now lives here in `docs/arquitectura.md` (plus `propuesta-bosquejo.md` and `arquitectura-resumen.md`). Lab data work (Phases 0–2) continues in the zbx-in-docker repo. This repo holds the agent skeleton only.
+> **Status: Phase 3 skeleton done.** Canonical design lives here in `docs/arquitectura.md` (plus `propuesta-bosquejo.md` and `arquitectura-resumen.md`). `agent/` holds the L0/L1/L2 router + read-only Zabbix CLI; `mcp/` is still an empty placeholder pending Phase 2 server selection. Lab data work (Phases 0–2) continues in the zbx-in-docker repo. Operations: `docs/runbook-operativo.md`.
 
 ## Quick path
 
@@ -24,9 +24,9 @@ Conversational operations assistant for infrastructure monitoring. It answers qu
 ## Repository structure
 
 ```text
-mcp/      # MCP hub client configuration and curated tool subsets (empty)
-agent/    # Orchestrator: router L0/L1/L2, channel adapters (empty)
-docs/     # Design docs; arquitectura.md is canonical, plus propuesta-bosquejo.md and arquitectura-resumen.md
+mcp/      # MCP hub client configuration and curated tool subsets (empty, pending Phase 2)
+agent/    # Orchestrator: router L0/L1/L2, Zabbix read-only client, CLI (Phase 3 done, Discord pending Phase 4)
+docs/     # Design docs; arquitectura.md is canonical, plus propuesta-bosquejo.md, arquitectura-resumen.md, auditoria-2026-09-10.md, runbook-operativo.md
 ```
 
 ## Orquestador
@@ -49,5 +49,6 @@ no escribe en Zabbix.
 ## Next steps
 
 - [x] Canonical architecture doc migrated here from zbx-in-docker (`docs/arquitectura.md`).
+- [x] L0/L1 router skeleton + read-only CLI (Phase 3).
 - [ ] Add MCP client config once Phase 2 selects the Zabbix MCP server.
-- [ ] Add L0/L1 router skeleton (Phase 3), then the Discord adapter (Phase 4).
+- [ ] Add Discord adapter (Phase 4).
