@@ -45,4 +45,5 @@ def test_l1_keyword_routes_to_l0_handler():
 def test_l2_stub():
     level, text = route("correlaciona la causa raiz con runbooks", FakeClient())
     assert level == "L2"
-    assert text == L2_FALLBACK
+    assert text.startswith(L2_FALLBACK)
+    assert "mcp/curated-tools.json" in text

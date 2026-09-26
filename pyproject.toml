@@ -20,4 +20,4 @@ test = ["pytest"]
 testpaths = ["tests"]
 
 [tool.setuptools]
-packages = ["agent"]
+packages = ["agent", "mcp"]

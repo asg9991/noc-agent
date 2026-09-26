@@ -18,7 +18,7 @@
 cd /home/asg/projects/lab/noc-agent
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e '.[test]'
-python3 -m pytest -q   # 4 tests router, sin red (FakeClient)
+python3 -m pytest -q   # router + catalogo curado, sin red (FakeClient)
 ```
 
 Errores vistos en [11] y cómo resolverlos:
@@ -54,13 +54,15 @@ writes ni `raw_api_call`). Catálogo curado 15–25 tools por token, nunca compl
 
 Estado actual:
 
-- `mcp/` en este repo está vacío (solo `.gitkeep`): el hub vive en `zbx-in-docker`
+- `mcp/` holds the client-side curated catalog (`mcp/curated-tools.json`,
+  20 read-only tools split by role) plus the loader/validator
+  (`mcp/catalog.py`, no network). The hub itself still lives in `zbx-in-docker`
   (`docker/zabbix-mcp-config.toml`, build local, loopback `:8080`, `read_only`, ~35 tools).
 - El agente aquí es consumidor/orquestador, no duplica compose ni templates.
 
 Pendiente operativo:
 
-- [ ] Agregar `mcp/` client config curada (~15–25 tools, nunca catálogo completo) — desbloquea L2 real.
+- [x] Agregar `mcp/` client config curada (~15–25 tools, nunca catálogo completo) — desbloquea L2 real.
 - [ ] Doc de operación del hub + rotación de tokens (hoy solo hallazgo de auditoría, sin procedimiento).
 - [ ] Mover hub a VM dedicada fuera del compose (decisión de arquitectura).
 - [ ] Revisar permisos y secretos según auditoría (toml con token, `.env` group-writable, token Telegram en historial) — rotar y corregir permisos, sin pegar valores acá.
