@@ -1,10 +1,9 @@
 # NOC Agent — Architecture (summary)
 
-> **Note:** one-page summary. The canonical design document currently lives in
-> [zbx-in-docker](https://github.com/asg9991/zbx-in-docker) at
-> `docs/noc-agent/arquitectura.md` (plus `propuesta-bosquejo.md`) and will
-> migrate here. In case of divergence, the zbx-in-docker version prevails
-> until migration is declared complete.
+> **Note:** one-page summary. The canonical design document lives here in
+> `docs/arquitectura.md` (plus `propuesta-bosquejo.md` and
+> `arquitectura-resumen.md`). Migration from zbx-in-docker is complete; in
+> case of divergence, this repo prevails.
 
 ## Vision
 
@@ -28,8 +27,10 @@ verified tool data only — no data, no answer.
 |-------|---------|--------|
 | 0 | Local lab compose, Zabbix stack up | done (zbx-in-docker) |
 | 1 | Simulated data: flapping hosts/triggers | done (zbx-in-docker) |
-| 2 | MCP hub: filtered read-only zabbix-mcp; external endpoint validation | in progress (zbx-in-docker) |
-| 3 | Orchestrator: L0/L1 router + shared client library; CLI first | pending (here) |
+| 2 | MCP hub: initMAX zabbix-mcp-server v1.36.1, filtered read-only; external endpoint validation | done 2026-09-26 (curated 15–25 tools per token) |
+| 3 | Orchestrator: L0/L1 router + shared client library; CLI first | skeleton done (L2 stub; real L2 waits for `mcp/` client config) |
 | 4 | Discord adapter: alerts→threads, buttons, ephemeral, routing ledger | pending (here) |
 
-Open decisions: final MCP server choice (empirical, Phase 2); production strong model (client's call); long-term memory persistence (after Phase 4).
+Decision Phase 2 (2026-09-26, ratified): initMAX zabbix-mcp-server v1.36.1, curated 15–25 tools per read-only token.
+
+Open decisions: production strong model (client's call); long-term memory persistence (after Phase 4).

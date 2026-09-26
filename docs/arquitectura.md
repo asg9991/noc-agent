@@ -170,16 +170,17 @@ ejecutarse.
 |---|---|---|
 | 0 | Adaptar compose a lab local (`DATA_DIR` parametrizado) y levantar stack Zabbix | hecha |
 | 1 | Datos simulados: hosts falsos con triggers que flappean (problemas reales para consultar) | hecha |
-| 2 | Hub MCP: zabbix-mcp-server filtrado read-only; validación con endpoint externo (Claude Code/OpenCode) | pendiente |
-| 3 | Orquestador: router L0/L1 + librería cliente compartida; CLI primero | pendiente |
+| 2 | Hub MCP: initMAX zabbix-mcp-server v1.36.1 filtrado read-only; validación con endpoint externo (Claude Code/OpenCode) | hecha (decisión 2026-09-26) |
+| 3 | Orquestador: router L0/L1 + librería cliente compartida; CLI primero | skeleton hecho (L2 stub; L2 real pendiente de `mcp/` client config) |
 | 4 | Adapter Discord: alertas→hilos, botones, ephemeral, ledger de routing | pendiente |
 
-Elección concreta de MCP server (initMAX vs alternativas livianas) se resuelve
-empíricamente en Fase 2 con criterios: soporte de filtrado de tools, modo
-read-only, costo de catálogo curado, madurez del proyecto.
+Decisión Fase 2 (2026-09-26, ratificada): initMAX `zabbix-mcp-server` v1.36.1.
+Criterios aplicados: filtrado de tools por token (curado 15–25, nunca catálogo
+completo), modo read-only real (sin writes ni `raw_api_call`), madurez del
+proyecto (analytics: anomaly_detect y capacity_forecast verificados en lab).
+Evidencia: spike MCP en lab (rotación de tokens, ACL 600), research §3–§4.
 
 ## 9. Decisiones abiertas
 
-- Selección final del zabbix-mcp-server (Fase 2).
 - Modelo fuerte de producción (decisión del cliente; adapter ya contempla nube).
 - Persistencia de memoria de largo plazo para "conocer el NOC" (runbooks, incidentes): a definir tras Fase 4.
