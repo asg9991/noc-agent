@@ -48,9 +48,14 @@ etapas posteriores y bajo permisos— ejecuta acciones sobre la infraestructura.
                     Zabbix API · (FortiGate REST, futuro)
 ```
 
-- **Discord/Telegram son adapters**, no sistemas independientes: distintos frentes hacia el mismo cerebro.
-- Los endpoints de desarrollo/administración (OpenCode, Claude Code, Codex) se conectan al mismo hub vía MCP nativo: independencia total de endpoint.
-- El orquestador define un **vocabulario abstracto de interacción** (`reply`, `menu`, `form`, `ephemeral`) que cada canal traduce a sus componentes nativos.
+- **Discord y Telegram son adapters de guardia**, no intermediarios: distintos frentes hacia el mismo orquestador. Reciben alertas y conversan en el canal.
+- **Los agentes de código son clientes MCP directos**: OpenCode, Claude Code, Codex y agentes de técnicos de la coope se conectan al mismo hub vía MCP nativo, sin pasar por Discord ni Telegram. Mismo hub, mismo gobierno, distinto token/rol.
+- El orquestador define un **vocabulario abstracto de interacción** (`reply`, `menu`, `form`, `ephemeral`) que cada canal chat traduce a sus componentes nativos. Los agentes directos no usan ese vocabulario: piden tools MCP por nombre.
+
+| Camino | Quién | Entra por | Usa | No usa |
+|---|---|---|---|---|
+| Guardia en chat | Operador de turno | Discord (hoy), Telegram (futuro) | Orquestador bot + hub MCP | Consola Zabbix |
+| Técnico con agente | Técnico coope / ingeniería | OpenCode, Claude Code, Codex directo al hub | Hub MCP con token propio (`operator` / `technician`) | Discord como intermediario |
 
 ## 4. Decisión de integración: MCP
 
@@ -118,9 +123,10 @@ no refactor.
 4. Memoria externa (incidentes, runbooks, contexto histórico) para no arrastrar historial largo.
 5. Prompt caching del catálogo y system prompt.
 
-## 6. Canales: Discord primero
+## 6. Canales de chat vs agentes directos
 
-Discord es el canal primario del primer cliente y el adapter más completo:
+Discord es el canal de guardia primario; Telegram lo replica después con el
+mismo vocabulario. Los agentes de código son un camino aparte y directo al hub.
 
 | Necesidad | Componente Discord |
 |---|---|
@@ -143,6 +149,15 @@ Flujo operativo tipo:
 
 El historial del hilo alimenta al agente como contexto natural del incidente.
 Telegram se implementa después reutilizando el mismo orquestador y vocabulario.
+
+### Agentes directos (sin Discord en el medio)
+
+Técnicos de la coope e ingeniería con OpenCode / Claude Code / Codex consultan
+Zabbix directo contra el hub MCP, con su propio bearer token y rol
+(`operator` = triage diario, `technician` = diagnóstico + reportes). No abren
+Discord, no crean hilos, no usan botones: piden `problem_active_get`,
+`host_get`, etc. por nombre. El hub aplica el mismo gate `read_only` y el
+mismo catálogo curado que para el bot.
 
 ## 7. Seguridad y gobernanza
 
