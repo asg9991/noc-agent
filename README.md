@@ -2,13 +2,13 @@
 
 Conversational operations assistant for infrastructure monitoring. It answers questions and runs controlled actions over observability tools (Zabbix first) from the channels the team already uses (Discord first, Telegram later) and from code agents talking directly to the same MCP hub (no chat in the middle).
 
-> **Status: Phase 3 skeleton done.** Canonical design lives here in `docs/arquitectura.md` (plus `propuesta-bosquejo.md` and `arquitectura-resumen.md`). `agent/` holds the L0/L1/L2 router + read-only Zabbix CLI; `mcp/` is still an empty placeholder pending Phase 2 server selection. Lab data work (Phases 0–2) continues in the zbx-in-docker repo. Operations: `docs/runbook-operativo.md`.
+> **Status: Phase 3 in progress (L2 thin client done on main).** Canonical design lives here in `docs/arquitectura.md` (plus `propuesta-bosquejo.md` and `arquitectura-resumen.md`). `agent/` holds the L0/L1/L2 router + read-only Zabbix CLI + thin MCP client (`agent/mcp_client.py`, allowlist-gated); `mcp/` holds the curated client catalog (`mcp/curated-tools.json`, 20 read-only tools split operator/technician). Lab data work (Phases 0–2) continues in the zbx-in-docker repo. Operations: `docs/runbook-operativo.md`.
 
 ## Quick path
 
 1. Read `docs/arquitectura.md` for the one-page design summary.
-2. Follow active lab work in [zbx-in-docker](https://github.com/asg9991/zbx-in-docker) (Phases 0–2).
-3. Watch `mcp/` (tool hub clients) and `agent/` (orchestrator) — both empty placeholders for now.
+2. Follow active lab work in [zbx-in-docker](https://github.com/asg9991/zbx-in-docker) (Phases 0–2, hub MCP lives there).
+3. See `mcp/curated-tools.json` (client catalog, 20 tools) and `agent/mcp_client.py` (thin allowlist-gated client) — `agent/` (orchestrator).
 
 ## Details
 
@@ -24,8 +24,8 @@ Conversational operations assistant for infrastructure monitoring. It answers qu
 ## Repository structure
 
 ```text
-mcp/      # MCP hub client configuration and curated tool subsets (empty, pending Phase 2)
-agent/    # Orchestrator: router L0/L1/L2, Zabbix read-only client, CLI (Phase 3 done, Discord pending Phase 4)
+mcp/      # Curated client catalog (curated-tools.json, 20 read-only) + loader/validator
+agent/    # Orchestrator: router L0/L1/L2, Zabbix read-only client, thin MCP client, CLI (Discord pending Phase 4)
 docs/     # Design docs; arquitectura.md is canonical, plus propuesta-bosquejo.md, arquitectura-resumen.md, auditoria-2026-09-10.md, runbook-operativo.md
 ```
 
@@ -50,5 +50,5 @@ no escribe en Zabbix.
 
 - [x] Canonical architecture doc migrated here from zbx-in-docker (`docs/arquitectura.md`).
 - [x] L0/L1 router skeleton + read-only CLI (Phase 3).
-- [ ] Add MCP client config once Phase 2 selects the Zabbix MCP server.
+- [x] MCP curated catalog (20 tools) + thin allowlist-gated client (merged to main, 18 tests green).
 - [ ] Add Discord adapter (Phase 4).
