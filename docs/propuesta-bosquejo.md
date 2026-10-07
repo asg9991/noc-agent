@@ -30,21 +30,24 @@ La transición propuesta:
 ## 3. La solución
 
 Un servicio centralizado —alojado en infraestructura dedicada— al que el equipo
-accede por dos caminos independientes al mismo hub: guardia por chat (Discord
-primario, Telegram después) y técnicos con agentes directos al MCP:
+accede por dos caminos independientes al mismo hub: guardia por el canal que ya
+usa (adapters: mail, Discord, Telegram) y técnicos con agentes directos al MCP:
 
 ```text
    Guardia                    Técnicos / ingeniería
-   Discord · Telegram         OpenCode · Claude Code · Codex
-        │  (adapter chat)              │  (MCP directo, sin chat)
-        ▼                              ▼
-       ┌─────────────────┐        ┌──────────────────────┐
-       │   NOC AGENT     │  MCP   │  Servicios de red    │
-       │  orquestación,  │◄──────►│  Zabbix (hoy)        │
-       │  permisos,      │        │  Fortinet (futuro)   │
-       │  auditoría      │        └──────────────────────┘
-       └─────────────────┘
+   Mail · Discord · Telegram  OpenCode · Claude Code · Codex
+        │  (adapter a elección)        │  (MCP directo, sin chat)
+         ▼                              ▼
+        ┌─────────────────┐        ┌──────────────────────┐
+        │   NOC AGENT     │  MCP   │  Servicios de red    │
+        │  orquestación,  │◄──────►│  Zabbix (hoy)        │
+        │  permisos,      │        │  Fortinet (futuro)   │
+        │  auditoría      │        └──────────────────────┘
+        └─────────────────┘
 ```
+
+> Instancia Cespal: guardia por mail (hilos por incidente). Discord/Telegram
+> disponibles para otras instancias sin cambiar el orquestador.
 
 ### Características principales
 

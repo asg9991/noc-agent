@@ -67,9 +67,12 @@ Pendiente operativo:
 - [ ] Mover hub a VM dedicada fuera del compose (decisión de arquitectura).
 - [ ] Revisar permisos y secretos según auditoría (toml con token, `.env` group-writable, token Telegram en historial) — rotar y corregir permisos, sin pegar valores acá.
 
-## 5. Discord, Telegram y agentes directos (thread [13])
+## 5. Adapters: mail, Discord, Telegram y agentes directos (thread [13])
 
-- Decisión: Discord-first para guardia (arquitectura §3, §6). Adapter vive en `agent/` (Fase 4), hoy no existe.
+- Decisión de producto: adapters intercambiables sobre el mismo orquestador y
+  vocabulario (`reply`, `menu`, `form`, `ephemeral`); cada instancia elige el suyo.
+  Instancia Cespal (2026-10): mail-first (hilos por incidente); Discord/Telegram
+  fuera del plan inmediato. El adapter vive en `agent/` (Fase 4), hoy no existe.
 - Vocabulario abstracto del orquestador (`reply`, `menu`, `form`, `ephemeral`) que cada canal chat traduce a nativos.
 - Telegram queda para después, reutilizando el mismo vocabulario y el mismo orquestador que Discord.
 - Agentes directos: técnicos de la coope con OpenCode / Claude Code / Codex van directo al hub MCP en `zbx-in-docker` (`127.0.0.1:8080` en lab, VM dedicada en prod), con bearer propio y rol `operator` / `technician` de `mcp/curated-tools.json`. No pasan por Discord ni crean hilos.

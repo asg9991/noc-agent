@@ -1,6 +1,6 @@
 # NOC Agent
 
-Conversational operations assistant for infrastructure monitoring. It answers questions and runs controlled actions over observability tools (Zabbix first) from the channels the team already uses (Discord first, Telegram later) and from code agents talking directly to the same MCP hub (no chat in the middle).
+Conversational operations assistant for infrastructure monitoring. It answers questions and runs controlled actions over observability tools (Zabbix first) from the channels each client already uses (adapters: mail, Discord, Telegram) and from code agents talking directly to the same MCP hub (no chat in the middle). Reference instance (Cespal): mail-first.
 
 > **Status: Phase 3 in progress (L2 thin client done on main).** Canonical design lives here in `docs/arquitectura.md` (plus `propuesta-bosquejo.md` and `arquitectura-resumen.md`). `agent/` holds the L0/L1/L2 router + read-only Zabbix CLI + thin MCP client (`agent/mcp_client.py`, allowlist-gated); `mcp/` holds the curated client catalog (`mcp/curated-tools.json`, 20 read-only tools split operator/technician). Lab data work (Phases 0–2) continues in the zbx-in-docker repo. Operations: `docs/runbook-operativo.md`.
 
@@ -18,7 +18,7 @@ Conversational operations assistant for infrastructure monitoring. It answers qu
 | What it is not | Not a monitoring replacement, not a fork of zbx-in-docker. No compose files, templates, or scripts are copied here. |
 | Relation to zbx-in-docker | [zbx-in-docker](https://github.com/asg9991/zbx-in-docker) is the data engine: local Zabbix lab, simulated data, and the MCP hub the agent connects to. This repo is the consumer/orchestrator side. Canonical design lives here in `docs/arquitectura.md`. |
 | Cost doctrine | L0 deterministic (0 tokens) → L1 classifier (~$0) → L2 agent (curated tools only). Cheapest level that resolves each interaction wins. |
-| Channels | Discord-first (buttons, threads, modals, ephemeral replies) for on-call; Telegram later reusing the same orchestrator vocabulary. Code agents (OpenCode/Claude/Codex) query the same MCP hub directly with their own token/role, never via Discord. |
+| Channels | Channel-agnostic adapters (mail, Discord, Telegram) over one orchestrator vocabulary, plus n8n at the edge (transform only, never decides). Code agents (OpenCode/Claude/Codex) query the same MCP hub directly with their own token/role. Reference instance (Cespal): mail-first. |
 | Security | Layered: network → bearer token → OAuth 2.1; least privilege; per-user Zabbix credentials as production goal; explicit confirmation for writes; full audit trail. |
 
 ## Repository structure

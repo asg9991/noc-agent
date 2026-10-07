@@ -48,8 +48,10 @@ etapas posteriores y bajo permisos— ejecuta acciones sobre la infraestructura.
                     Zabbix API · (FortiGate REST, futuro)
 ```
 
-- **Discord y Telegram son adapters de guardia**, no intermediarios: distintos frentes hacia el mismo orquestador. Reciben alertas y conversan en el canal.
+- **Mail, Discord y Telegram son adapters intercambiables**, no intermediarios: distintos frentes hacia el mismo orquestador. Reciben alertas y conversan en el canal que cada cliente ya usa.
 - **Los agentes de código son clientes MCP directos**: OpenCode, Claude Code, Codex y agentes de técnicos de la coope se conectan al mismo hub vía MCP nativo, sin pasar por Discord ni Telegram. Mismo hub, mismo gobierno, distinto token/rol.
+- **n8n vive solo en el borde**: transforma y entrega (webhooks, formatos), nunca decide ni autoriza.
+- **Instancias**: el producto es agnóstico al canal; cada despliegue elige sus adapters. Instancia de referencia (Cespal, 2026-10): mail-first.
 - El orquestador define un **vocabulario abstracto de interacción** (`reply`, `menu`, `form`, `ephemeral`) que cada canal chat traduce a sus componentes nativos. Los agentes directos no usan ese vocabulario: piden tools MCP por nombre.
 
 | Camino | Quién | Entra por | Usa | No usa |
@@ -123,10 +125,12 @@ no refactor.
 4. Memoria externa (incidentes, runbooks, contexto histórico) para no arrastrar historial largo.
 5. Prompt caching del catálogo y system prompt.
 
-## 6. Canales de chat vs agentes directos
+## 6. Canales (adapters) vs agentes directos
 
-Discord es el canal de guardia primario; Telegram lo replica después con el
-mismo vocabulario. Los agentes de código son un camino aparte y directo al hub.
+Cada cliente elige sus adapters sobre el vocabulario abstracto del orquestador
+(`reply`, `menu`, `form`, `ephemeral`); mail, Discord y Telegram son frentes
+intercambiables, no decisiones de producto. Los agentes de código son un camino
+aparte y directo al hub.
 
 | Necesidad | Componente Discord |
 |---|---|
@@ -148,7 +152,11 @@ Flujo operativo tipo:
 ```
 
 El historial del hilo alimenta al agente como contexto natural del incidente.
-Telegram se implementa después reutilizando el mismo orquestador y vocabulario.
+Cada adapter (mail, Discord, Telegram) reutiliza el mismo orquestador y vocabulario;
+la tabla de arriba muestra el mapeo para Discord a modo de referencia.
+
+> Instancia Cespal (2026-10): mail-first. Discord/Telegram quedan fuera del plan
+> inmediato; el adapter mail usa hilos por incidente en lugar de threads de chat.
 
 ### Agentes directos (sin Discord en el medio)
 
