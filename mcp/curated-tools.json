@@ -3,35 +3,35 @@
     "Curated MCP client catalog for noc-agent (consumer side, read-only).",
     "Hub: initMAX zabbix-mcp-server v1.36.1 in zbx-in-docker (loopback 127.0.0.1:8080, read_only, ~35 tools). This repo never touches the hub config; it only declares which tools L2 may request.",
     "Budget: 15-25 tools max per token, never the full ~237-tool catalog (arch doc: full schemas cost ~100k tokens per turn).",
-    "IN: read-only getters (*_get) for daily triage (operator) plus diagnostics/analytics/reporting (technician). Extensions anomaly_detect and capacity_forecast take FLAT args; core tools take a 'params' wrapper; report_generate is PDF-only.",
+    "IN: read-only getters (*_get) for daily triage (operator) plus diagnostics/analytics/reporting (technician). ALL tools take FLAT args on hub 1.36.1 (verified 2026-10-07: the 'params' wrapper is silently ignored, filters included); report_generate is PDF-only.",
     "OUT: every write (*_create/update/delete, event_acknowledge, maintenance/sla write ops), raw_api_call (bypasses the read-only gate), and user/token/script/admin tools. Defense in depth: the hub enforces read_only at the gate; this list only shrinks what L2 can ask for.",
     "Name verification status (2026-09-26): problem_active_get, host_status_get and host_get were called against the live lab hub during the Fase 2 spike; the remaining names follow the same <resource>_<qualifier>_get convention. Re-validate against a live tools/list once a read-only bearer is available; mcp/catalog.py:validate_catalog() enforces count and read-only shape, not hub existence."
   ],
   "version": 1,
   "roles": {
     "operator": [
-      {"name": "problem_active_get", "args": "params", "why": "Daily triage baseline: active problems. Verified against the lab hub in the Fase 2 spike."},
-      {"name": "event_get", "args": "params", "why": "Event detail behind a problem (clock, severity, objectids) for manual correlation."},
-      {"name": "trigger_get", "args": "params", "why": "Trigger state/expression to tell firing apart from misconfigured triggers."},
-      {"name": "host_get", "args": "params", "why": "Host inventory baseline. Referenced in the Fase 2 spike write-block check."},
-      {"name": "host_status_get", "args": "params", "why": "Per-host availability/health summary. Verified against the lab hub in the Fase 2 spike."},
-      {"name": "hostgroup_get", "args": "params", "why": "Scope triage by host group before drilling into individual hosts."},
-      {"name": "item_get", "args": "params", "why": "See what is actually monitored on a host (key, delay, value type)."},
-      {"name": "history_get", "args": "params", "why": "Raw recent values behind a spike, with an explicit limit."},
-      {"name": "trend_get", "args": "params", "why": "Aggregated hourly/daily trends for 'since when' questions without pulling raw history."},
-      {"name": "service_get", "args": "params", "why": "Service tree / SLA view for impact wording in operator replies."}
+      {"name": "problem_active_get", "args": "flat", "why": "Daily triage baseline: active problems. Verified against the lab hub in the Fase 2 spike."},
+      {"name": "event_get", "args": "flat", "why": "Event detail behind a problem (clock, severity, objectids) for manual correlation."},
+      {"name": "trigger_get", "args": "flat", "why": "Trigger state/expression to tell firing apart from misconfigured triggers."},
+      {"name": "host_get", "args": "flat", "why": "Host inventory baseline. Referenced in the Fase 2 spike write-block check."},
+      {"name": "host_status_get", "args": "flat", "why": "Per-host availability/health summary. Verified against the lab hub in the Fase 2 spike."},
+      {"name": "hostgroup_get", "args": "flat", "why": "Scope triage by host group before drilling into individual hosts."},
+      {"name": "item_get", "args": "flat", "why": "See what is actually monitored on a host (key, delay, value type)."},
+      {"name": "history_get", "args": "flat", "why": "Raw recent values behind a spike, with an explicit limit."},
+      {"name": "trend_get", "args": "flat", "why": "Aggregated hourly/daily trends for 'since when' questions without pulling raw history."},
+      {"name": "service_get", "args": "flat", "why": "Service tree / SLA view for impact wording in operator replies."}
     ],
     "technician": [
-      {"name": "graph_get", "args": "params", "why": "Graphs for diagnosis. Lab note: needs frontend credentials in hub config; kept because it is read-only."},
-      {"name": "dashboard_get", "args": "params", "why": "Read dashboards instead of re-describing state that already has a view."},
-      {"name": "map_get", "args": "params", "why": "Network maps for blast-radius reading during incidents."},
-      {"name": "maintenance_get", "args": "params", "why": "Read maintenance windows so suppressed problems are not mis-triaged."},
-      {"name": "alert_get", "args": "params", "why": "Alert dispatch history: who was already notified about what."},
-      {"name": "sla_get", "args": "params", "why": "SLA/SLO figures for technician-level impact assessment."},
-      {"name": "discoveryrule_get", "args": "params", "why": "Read discovery rules to explain auto-created hosts/items."},
+      {"name": "graph_get", "args": "flat", "why": "Graphs for diagnosis. Lab note: needs frontend credentials in hub config; kept because it is read-only."},
+      {"name": "dashboard_get", "args": "flat", "why": "Read dashboards instead of re-describing state that already has a view."},
+      {"name": "map_get", "args": "flat", "why": "Network maps for blast-radius reading during incidents."},
+      {"name": "maintenance_get", "args": "flat", "why": "Read maintenance windows so suppressed problems are not mis-triaged."},
+      {"name": "alert_get", "args": "flat", "why": "Alert dispatch history: who was already notified about what."},
+      {"name": "sla_get", "args": "flat", "why": "SLA/SLO figures for technician-level impact assessment."},
+      {"name": "discoveryrule_get", "args": "flat", "why": "Read discovery rules to explain auto-created hosts/items."},
       {"name": "anomaly_detect", "args": "flat", "why": "Extension analytics: anomaly detection. Takes FLAT args (no params wrapper)."},
       {"name": "capacity_forecast", "args": "flat", "why": "Extension analytics: capacity forecast. Takes FLAT args (no params wrapper)."},
-      {"name": "report_generate", "args": "params", "why": "Extension reporting, PDF-only (no xlsx). Kept in technician role because reports leave the chat."}
+      {"name": "report_generate", "args": "flat", "why": "Extension reporting, PDF-only (no xlsx). Kept in technician role because reports leave the chat."}
     ]
   },
   "excluded": {

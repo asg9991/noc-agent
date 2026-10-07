@@ -16,8 +16,8 @@ CATALOG_PATH = Path(__file__).with_name("curated-tools.json")
 MIN_TOOLS = 15
 MAX_TOOLS = 25
 
-CALL_STYLE_PARAMS = "params"  # core tools: arguments = {"params": {...}}
-CALL_STYLE_FLAT = "flat"  # extensions: arguments passed flat
+CALL_STYLE_PARAMS = "params"  # legacy: hub <=1.35 wrapped core args; 1.36.1 ignores it
+CALL_STYLE_FLAT = "flat"  # hub 1.36.1: every tool takes flat arguments
 
 # Substrings that never belong in a read-only curated list.
 _WRITE_MARKERS = ("create", "update", "delete", "acknowledge", "login", "script")

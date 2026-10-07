@@ -64,11 +64,10 @@ def test_no_write_like_tools_in_catalog():
         assert lowered != "raw_api_call"
 
 
-def test_extensions_use_flat_args_core_uses_params():
-    assert call_style("anomaly_detect") == CALL_STYLE_FLAT
-    assert call_style("capacity_forecast") == CALL_STYLE_FLAT
-    assert call_style("problem_active_get") == CALL_STYLE_PARAMS
-    assert call_style("host_status_get") == CALL_STYLE_PARAMS
+def test_all_tools_use_flat_args_on_hub_1_36_1():
+    # Verified live 2026-10-07: the hub ignores the 'params' wrapper.
+    for name in all_tools():
+        assert call_style(name) == CALL_STYLE_FLAT
 
 
 def test_lab_verified_tools_are_present():
