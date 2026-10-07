@@ -206,4 +206,6 @@ Evidencia: spike MCP en lab (rotación de tokens, ACL 600), research §3–§4.
 ## 9. Decisiones abiertas
 
 - Modelo fuerte de producción (decisión del cliente; adapter ya contempla nube).
+- Instancia Cespal (2026-10, verde): L2 cubierto con LLM/agente local en VM propia
+  + notificaciones por mail; WhatsApp mediano/largo plazo condicional.
 - Persistencia de memoria de largo plazo para "conocer el NOC" (runbooks, incidentes): a definir tras Fase 4.
