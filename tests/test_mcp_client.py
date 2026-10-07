@@ -70,12 +70,12 @@ def test_initialize_stores_session_and_lists():
     assert c.list_tools() == [{"name": "problem_active_get"}]
 
 
-def test_call_builds_params_wrapper_for_core_tools():
+def test_call_builds_flat_args_for_core_tools():
     t = _FakeTransport()
     c = MCPClient(bearer="x", transport=t)
     c.session_id = "sess-123"
-    c.call_tool("problem_active_get", {})
-    assert t.calls[0]["arguments"] == {"params": {}}
+    c.call_tool("problem_active_get", {"limit": 5})
+    assert t.calls[0]["arguments"] == {"limit": 5}
     assert t.calls[0]["name"] == "problem_active_get"
 
 
