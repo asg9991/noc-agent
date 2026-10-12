@@ -49,6 +49,7 @@ Route: inline (delegación no disponible en este runtime) + piezas chicas ya ent
 ## Progreso
 
 - Doc creado. Branch: `feature/l2-local-agent` (creado desde main en sincro con origin).
+- Recovery commit `b102216` (2026-10-12): T1-T6 + sonda, `pytest -q` 50 passed.
 - T1 siguiente: leer estilo de `tests/test_router.py`, escribir test RED, implementar GREEN.
 
 ## Siguiente paso
