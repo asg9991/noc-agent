@@ -19,9 +19,15 @@ class FakeModel:
 
 
 class FakeMCP:
-    def __init__(self, payload=None, error=None):
+    def __init__(self, payload=None, error=None, init_error=None):
         self.payload = payload
         self.error = error
+        self.init_error = init_error
+
+    def initialize(self):
+        if self.init_error is not None:
+            raise self.init_error
+        return "sesion-fake"
 
     def call_tool(self, name, args=None):
         if self.error is not None:
@@ -112,3 +118,24 @@ def test_loop_modelo_con_credencial_rota_da_alarma(tmp_path):
     assert "alarma" in out
     records = [json.loads(l) for l in log.read_text(encoding="utf-8").splitlines()]
     assert records[0]["result"] == "error_auth"
+
+
+def test_handshake_con_credencial_rota_da_alarma(tmp_path):
+    log = tmp_path / "audit.jsonl"
+    model = FakeModel([{"thought": "listo", "answer": "nada."}])
+    fake = FakeMCP(init_error=RuntimeError("Not authorized"))
+    out = run_loop("¿hay alertas?", model=model, client=fake, audit_path=log)
+    assert "alarma" in out
+    records = [json.loads(l) for l in log.read_text(encoding="utf-8").splitlines()]
+    assert records[0]["action"] == "hub_handshake"
+    assert records[0]["result"] == "error_auth"
+
+
+def test_handshake_caido_es_transitorio_sin_alarma(tmp_path):
+    log = tmp_path / "audit.jsonl"
+    model = FakeModel([{"thought": "listo", "answer": "nada."}])
+    fake = FakeMCP(init_error=TimeoutError("connect timed out"))
+    out = run_loop("¿hay alertas?", model=model, client=fake, audit_path=log)
+    assert "alarma" not in out
+    records = [json.loads(l) for l in log.read_text(encoding="utf-8").splitlines()]
+    assert records[0]["result"] == "error_transient"

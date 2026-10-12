@@ -56,9 +56,22 @@ def run_loop(
 
     # Handshake perezoso: si el cliente sabe inicializar sesión (MCP real),
     # se conecta solo. Los fakes de tests no lo tienen y no les pasa nada.
+    # Si el handshake falla, se clasifica igual que cualquier error: antes
+    # un 401 acá reventaba el loop sin dejar traza en audit.
     init = getattr(client, "initialize", None)
     if callable(init):
-        init()
+        try:
+            init()
+        except Exception as exc:
+            result = result_for(classify(exc))
+            log_decision(audit_path, actor=actor, action="hub_handshake",
+                         channel=channel, result=result,
+                         detail={"error": str(exc)[:300], "error_kind": result})
+            if result == "error_auth":
+                return ("corté con alarma: el hub rechazó la credencial en el "
+                        "handshake (401/403 o bearer inválido); rotá el token, "
+                        "no reintentes igual.")
+            return f"corté: no hay sesión con el hub ({result}): {str(exc)[:200]}"
 
     for _ in range(max_iters):
         try:
