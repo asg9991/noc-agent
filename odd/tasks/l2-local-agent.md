@@ -22,6 +22,7 @@ Route: inline (delegación no disponible en este runtime) + piezas chicas ya ent
 - [x] T6 cablear `router.handle_l2` → l2agent (reemplazar stub) — checks: `pytest -q` + `route()` devuelve L2 real (47 passed; stub pineado por 2 tests viejos → actualizados al nuevo contrato)
 - [x] T7 clasificación `error_auth` (diario #51): `l2agent/errors.py` (`classify`/`result_for`: 401/403→auth, 429/5xx/timeout→transient, resto unknown) + prefijo en `tools.run` + `result` en loop + alarma en observación y retorno — checks: `pytest -q` 58 passed (8 nuevos en `tests/test_errors.py`, RED→GREEN en vivo)
 - [x] T8 handshake `initialize()` clasificado (follow-up de T7): mismo `classify`/`result_for`, acción `hub_handshake` en audit, alarma si es credencial — checks: `pytest -q` 60 passed (2 nuevos, RED→GREEN en vivo). Lección: `mcp_client.initialize` hace `raise_for_status` crudo (401 si el bearer muere) y el loop ni lo miraba.
+- [x] T9 adapter `tool_calls` nativo (diario #54): `model.py` manda `tools`+`tool_choice` solo en familia gpt-oss (auto-detect + override), traduce tool_calls a paso y texto a answer; qwen intacto; max 2048 en nativas — checks: `pytest -q` 64 passed (4 nuevos, RED→GREEN) + benchmark 120b **6/8** (resuelve investigar-host 0/4 en qwen; 2 fallos = 429 pacing, no calidad).
 
 ## Cierre: primer loop real (2026-10-11)
 - Groq free (`qwen/qwen3.8-27b`) + hub lab + simuladores: `¿hay problemas

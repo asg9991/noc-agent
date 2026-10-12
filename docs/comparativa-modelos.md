@@ -101,16 +101,17 @@ sin IA para lo repetitivo (ya previsto en §5 de la propuesta).
 | Modelo | Éxito | Formato | Calidad útil | Lectura |
 |---|---|---|---|---|
 | `qwen3-32b` (actual) | 3–4/8 | JSON ok | Buena en triage/explicación; honesto sin datos | Baseline; 429 solo en ráfaga |
-| `gpt-oss-20b` | 2/8 | — | **Bloqueado**: HTTP 400 `tool_use_failed` | Habla dialecto nativo de tools (harmony); nuestro protocolo JSON-en-texto lo rechaza el gateway. No es veredicto de inteligencia: necesita adapter de `tool_calls` antes de comparar |
-| `gpt-oss-120b` | sin correr | — | Misma familia que 20b → mismo bloqueo probable (no afirmado sin medir) | Pendiente del adapter |
+| `gpt-oss-20b` | 2/8 (pre-adapter) | — | Medido antes del adapter (misma 400 que el 120b). Misma familia → mismo desbloqueo; calidad **pendiente de medir** con adapter |
+| `gpt-oss-120b` | **6/8** | Nativo ok | La mejor calidad hasta acá: resolvió *investigar host* (0/4 en qwen) con tools reales, explicaciones con umbral. Los 2 fallos son 429 en la tarea más pesada (mismo pacing intra-tarea, independiente del modelo) |
 | `allam-2-7b` (500K/día) | 2/8 nominal, 0/8 útil | No sigue el JSON | Repite la misma acción (dispara anti-repetición), devuelve prosa, respuestas evasivas genéricas | Presupuesto generoso, protocolo pobre: 7B no alcanza para este loop |
 
 Respuestas completas por modelo en `/tmp/opencode/bench_*.jsonl` (calidad a
 juicio del lector; el éxito/formato es automático).
 
-Consecuencia para la recomendación: el paso 2 (benchmark) dio resultado
-parcial —
-qwen sigue siendo el piloto, gpt-oss-20b queda como **spike de adapter
-nativo** (diario: crear task), allam **descartado por calidad**, 120b
-pendiente del mismo adapter. El precio pago del 20b (u$d 0.65/mes) es
-irrelevante hasta que el adapter exista.
+Consecuencia para la recomendación: el 120b con adapter es el mejor
+candidato técnico (calidad) y sale ~u$d 1.30/mes en pago a volumen S2
+(5.3M in × 0.15 + 0.85M out × 0.60); el 20b queda en ~u$d 0.65/mes
+pendiente de medir calidad con el mismo adapter (misma familia, mismo
+desbloqueo). qwen sigue como producción free. allam descartado. Ambos
+precios pagos son irrelevantes frente a cualquier VM; el free sigue
+alcanzando para piloto.
