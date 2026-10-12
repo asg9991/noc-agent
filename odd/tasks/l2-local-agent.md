@@ -74,10 +74,12 @@ Route: inline (delegación no disponible en este runtime) + piezas chicas ya ent
 - Límites free qwen/qwen3-32b (docs Groq 2026-10-09): 30 RPM, 8K TPM,
   1K RPD, 200K TPD.
 - Matemática diaria (corrida ≈ 2k tokens, 2–3 req):
-  - watch 5 min (288/día): ~580K tok vs 200K TPD ❌, ~700 req vs 1K ⚠️
+  - watch 5 min (288/día): ~580K tok vs 200K TPD ❌, ~600 req vs 1K ⚠️
   - watch 10 min (144/día): ~290K vs 200K ⚠️ marginal
   - watch 15 min (96/día): ~190K vs 200K ✓ justo
-- Opciones (SIN veredicto, falta data):
+- Síntesis para cliente en `docs/comparativa-modelos.md` (carga medida,
+  límites, precios, escenarios S1–S3, recomendación por etapas). Bitácora
+  de opciones considerada acá:
   a) gratis + cadencia ≥15 min + backoff (cero costo, margen fino);
   b) Groq paid (~10x límites, ~u$d 2/mes a este volumen);
   c) modelo chico (llama-3.1-8b: 500K TPD — verificar vigencia en
