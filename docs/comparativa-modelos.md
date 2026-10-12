@@ -79,7 +79,6 @@ Fórmula: `consultas/día × tokens/tarea × 30 × precio`. Volúmenes **[SUPUES
 modelos. Solo pago o cadencia menor.
 
 ## 4. Recomendación por etapas (honesta)
-
 1. **Piloto: free actual, u$d 0.** Alcanza con margen; sirve para validar
    volúmenes reales y afinar prompts.
 2. **Antes de producción: benchmark ciego qwen vs gpt-oss-20b** (mismas 4
@@ -96,3 +95,22 @@ Palancas de diseño que estiran cualquier presupuesto (valen para todos los
 modelos): backoff+retry ante 429, pausa entre vueltas del loop, historial
 corto, heartbeat (saltear el LLM si nada cambió), comandos deterministas
 sin IA para lo repetitivo (ya previsto en §5 de la propuesta).
+
+## 5. Benchmark ciego 2026-10-12 (4 tareas Etapa 1 × 2 corridas, mismo harness)
+
+| Modelo | Éxito | Formato | Calidad útil | Lectura |
+|---|---|---|---|---|
+| `qwen3-32b` (actual) | 3–4/8 | JSON ok | Buena en triage/explicación; honesto sin datos | Baseline; 429 solo en ráfaga |
+| `gpt-oss-20b` | 2/8 | — | **Bloqueado**: HTTP 400 `tool_use_failed` | Habla dialecto nativo de tools (harmony); nuestro protocolo JSON-en-texto lo rechaza el gateway. No es veredicto de inteligencia: necesita adapter de `tool_calls` antes de comparar |
+| `gpt-oss-120b` | sin correr | — | Misma familia que 20b → mismo bloqueo probable (no afirmado sin medir) | Pendiente del adapter |
+| `allam-2-7b` (500K/día) | 2/8 nominal, 0/8 útil | No sigue el JSON | Repite la misma acción (dispara anti-repetición), devuelve prosa, respuestas evasivas genéricas | Presupuesto generoso, protocolo pobre: 7B no alcanza para este loop |
+
+Respuestas completas por modelo en `/tmp/opencode/bench_*.jsonl` (calidad a
+juicio del lector; el éxito/formato es automático).
+
+Consecuencia para la recomendación: el paso 2 (benchmark) dio resultado
+parcial —
+qwen sigue siendo el piloto, gpt-oss-20b queda como **spike de adapter
+nativo** (diario: crear task), allam **descartado por calidad**, 120b
+pendiente del mismo adapter. El precio pago del 20b (u$d 0.65/mes) es
+irrelevante hasta que el adapter exista.
