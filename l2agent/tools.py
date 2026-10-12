@@ -18,6 +18,8 @@ from typing import Any, Protocol
 
 from mcp.catalog import tools_for
 
+from l2agent.errors import classify, result_for
+
 MAX_RESULTS = 50  # límite duro por llamada; el loop puede pedir menos
 MAX_CHARS = 4000  # techo de texto devuelto por llamada (tokens)
 
@@ -40,7 +42,9 @@ def run(
     except PermissionError:
         raise  # el gate habla fuerte: no se normaliza ni se esconde
     except Exception as exc:
-        return f"error: {exc}"
+        # La clase viaja en el prefijo: el loop la lee sin parsear texto.
+        # Lo no clasificable keeps "error:" (contrato viejo intacto).
+        return f"{result_for(classify(exc))}: {exc}"
     if isinstance(result, list) and len(result) > limit:
         shown = result[:limit]
         rest = len(result) - limit

@@ -25,7 +25,8 @@ import json
 from typing import Any, Protocol
 
 from l2agent.audit import log_decision
-from l2agent.guardrails import DeniedHook, classify, denied
+from l2agent.errors import classify, result_for
+from l2agent.guardrails import DeniedHook, classify as classify_tool, denied
 from l2agent.tools import ToolClient, run as run_tool
 
 MAX_ITERS = 5  # vueltas máximas por objetivo (terminación + costo acotados)
@@ -60,7 +61,20 @@ def run_loop(
         init()
 
     for _ in range(max_iters):
-        step = model.decide(goal, history)
+        try:
+            step = model.decide(goal, history)
+        except Exception as exc:
+            # El modelo también tiene credencial (API key) y también se cae
+            # la red: antes esto reventaba el loop sin dejar traza en audit.
+            result = result_for(classify(exc))
+            log_decision(audit_path, actor=actor, action="modelo_decide",
+                         channel=channel, result=result,
+                         detail={"error": str(exc)[:300], "error_kind": result})
+            if result == "error_auth":
+                return ("corté con alarma: la credencial del modelo falló "
+                        "(401/403 o key inválida); revisá la API key, "
+                        "no reintentes igual.")
+            return f"corté: el modelo falló ({result}): {str(exc)[:200]}"
         thought = step.get("thought", "")
         action = step.get("action")
         if action is None:
@@ -79,7 +93,7 @@ def run_loop(
                 "con los mismos parámetros (posible loop)."
             )
         seen.add(key)
-        reason = classify(tool)
+        reason = classify_tool(tool)
         if reason is not None:
             denied(tool, actor=actor, channel=channel, audit_path=audit_path,
                    reason=reason, on_denied=on_denied)
@@ -89,10 +103,19 @@ def run_loop(
             result = "denegado"
         else:
             observation = run_tool(client, tool, args)
-            result = "error" if observation.startswith("error:") else "ok"
+            if observation.startswith("error_auth:"):
+                result = "error_auth"
+                observation += (" (alarma: credencial del hub inválida o vencida; "
+                                "avisá al operador, no reintentes igual.)")
+            elif observation.startswith("error_transient:"):
+                result = "error_transient"
+            else:
+                result = "error" if observation.startswith("error:") else "ok"
+        detail: dict[str, Any] = {"args": args, "observation": observation[:500]}
+        if result != "ok":
+            detail["error_kind"] = result
         log_decision(audit_path, actor=actor, action=tool, channel=channel,
-                     result=result,
-                     detail={"args": args, "observation": observation[:500]})
+                     result=result, detail=detail)
         history.append({"thought": thought, "action": action,
                         "observation": observation})
 

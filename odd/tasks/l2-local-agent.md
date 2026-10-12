@@ -20,6 +20,8 @@ Route: inline (delegación no disponible en este runtime) + piezas chicas ya ent
 - [x] T4 `l2agent/loop.py` (workflow: observa→piensa→actúa→verifica, tope de iteraciones, anti-alucinación: solo datos de tools) — checks: `pytest -q` con modelo fake (41 passed: 6 nuevos, RED→GREEN en vivo)
 - [x] T5 `l2agent/main.py` + `l2agent/Dockerfile` (entrypoint + imagen slim, non-root, env por fuera) — checks: `docker build` + run sin secretos (uid=10001, --help, --list-tools, env limpio) + `pytest` 46 passed
 - [x] T6 cablear `router.handle_l2` → l2agent (reemplazar stub) — checks: `pytest -q` + `route()` devuelve L2 real (47 passed; stub pineado por 2 tests viejos → actualizados al nuevo contrato)
+- [x] T7 clasificación `error_auth` (diario #51): `l2agent/errors.py` (`classify`/`result_for`: 401/403→auth, 429/5xx/timeout→transient, resto unknown) + prefijo en `tools.run` + `result` en loop + alarma en observación y retorno — checks: `pytest -q` 58 passed (8 nuevos en `tests/test_errors.py`, RED→GREEN en vivo)
+  - Límite honesto: el handshake `initialize()` del cliente MCP sigue sin clasificar (si el token muere ahí, revienta sin audit); queda como follow-up porque exige leer `mcp_client` primero.
 
 ## Cierre: primer loop real (2026-10-11)
 
