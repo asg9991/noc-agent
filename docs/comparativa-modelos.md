@@ -124,7 +124,35 @@ modelos): backoff+retry ante 429, pausa entre vueltas del loop, historial
 corto, heartbeat (saltear el LLM si nada cambió), comandos deterministas
 sin IA para lo repetitivo (ya previsto en §5 de la propuesta).
 
-## 6. Benchmark ciego 2026-10-12 (4 tareas Etapa 1 × 2 corridas, mismo harness)
+## 6. Panorama escritura y modelos frontera (análisis, 2026-10-12)
+
+**Sesión-incidente medida (120b, 4 tareas encadenadas):** rep1 13.429 in +
+1.825 out (≈15k), 3/4 ok; rep2 ≈10k, 3/4. El fallo restante es estrategia
+(repite `trigger_get`, lo frena el anti-loop): la familia gpt-oss tiende a
+reintentar la misma acción ante la duda. Una sesión de incidente completa
+cuesta entonces **10–15k textos**.
+
+**Modo escritura (Etapa 2, proyección, sin medir):** cada escritura suma
+propuesta + confirmación + ejecución + verificación a una investigación
+base (≈2–4k): estimado 5–7k por operación. Jornada de construcción con
+contextos grandes (configs, dashboards en el prompt): ~500K/día
+[SUPUESTO]. A medir en piloto.
+
+**Modelos de suscripción tipo zen:** no son reutilizables como motor del
+servicio (licencia de uso interactivo por usuario, sin clave para
+servidor propio, facturación personal, sin auditoría). Las capacidades
+equivalentes sí son evaluables por API oficial con clave propia:
+
+| Vía | Ejemplo | Precio /1M in+out | Rol posible |
+|---|---|---|---|
+| Groq pago | 120b / 20b | 0.15+0.60 / 0.075+0.30 | Hoy |
+| Anthropic API | Haiku (u$d 0.05+0.25) / Sonnet (2+10) | barato / frontera | Triage barato / investigación profunda |
+| OpenAI API | gpt-5-nano (0.05+0.40) / mini (0.25+2.00) | barato | Mismo esquema por niveles |
+
+Calidad de frontera en este loop: sin medir. Presupuesto de desarrollo
+y de operación, separados.
+
+## 7. Benchmark ciego 2026-10-12 (4 tareas Etapa 1 × 2 corridas, mismo harness)
 
 | Modelo | Éxito | Formato | Calidad útil | Lectura |
 |---|---|---|---|---|
