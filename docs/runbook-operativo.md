@@ -151,5 +151,8 @@ tres compuertas en orden:
 Destino: outbox JSONL con asunto y cuerpo listos para mail (hilos del
 futuro adapter); cliente es mail-first. Cero tokens: plantillas, no LLM.
 CLI: `python -m l2agent.watch --db watch.db --notify [--min-severity High]`.
-Pendiente: timer systemd 15 min + redactado LLM solo sobre novedad
+Timer instalado 2026-10-12: `noc-agent-watch.timer` (systemd user, cada 15
+min, Persistent=true) → `noc-agent-watch.service` con DB/outbox en
+`~/.local/share/noc-agent-watch/`, env de `.env` del repo. Primer disparo
+verificado SUCCESS. Pendiente: redactado LLM solo sobre novedad
 confirmada + transporte mail (adapter Fase 4).
