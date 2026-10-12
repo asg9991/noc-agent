@@ -24,7 +24,6 @@ Route: inline (delegación no disponible en este runtime) + piezas chicas ya ent
 - [x] T8 handshake `initialize()` clasificado (follow-up de T7): mismo `classify`/`result_for`, acción `hub_handshake` en audit, alarma si es credencial — checks: `pytest -q` 60 passed (2 nuevos, RED→GREEN en vivo). Lección: `mcp_client.initialize` hace `raise_for_status` crudo (401 si el bearer muere) y el loop ni lo miraba.
 
 ## Cierre: primer loop real (2026-10-11)
-
 - Groq free (`qwen/qwen3.8-27b`) + hub lab + simuladores: `¿hay problemas
   activos?` → 8 problemas reales resumidos por severidad, en español.
 - Hallazgos del estreno: (1) Groq exige `max_tokens` (OTPM 1000) →
@@ -56,4 +55,16 @@ Route: inline (delegación no disponible en este runtime) + piezas chicas ya ent
 
 ## Siguiente paso
 
-- Ejecutar T1 en vivo con explicación parte por parte.
+- Slice watch (diario #50 resto): state/histéresis/heartbeat con cadencia baja
+  + backoff, u Ollama local (Fase 2); el gratis no da para loop cerrado.
+
+## Evidencia #50: sonda de techo + kit §6 (2026-10-12)
+
+- Kit §6 3/3 verde contra lab: handshake con sesión, `problem_active_get`
+  (3 activos), `history_get` (raw Zabbix), `host_create` denegada local.
+- Sonda N=10 (`scripts/sonda_techo.py`): 2 ok, 8 cortes por Groq 429
+  (`modelo_decide error_transient`). Techo confirmado: el gratis no aguanta
+  ráfaga (3 llamadas rápidas → throttle).
+- Bugs de la sonda (la primera corrida mintió 10/10 ok): la sonda ignoraba
+  el return del loop (los "corté" contaban como éxito) y necesitaba
+  `PYTHONPATH=.`. Fix: cuenta `cortes`, bootstrap de `sys.path`.
