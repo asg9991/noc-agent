@@ -78,7 +78,35 @@ Fórmula: `consultas/día × tokens/tarea × 30 × precio`. Volúmenes **[SUPUES
 **S3 — Watch cada 5 min**: ~580k tok/día — excede el free en todos los
 modelos. Solo pago o cadencia menor.
 
-## 4. Recomendación por etapas (honesta)
+## 4. Día pico: cuándo el free no alcanza (análisis, 2026-10-12)
+
+El piloto entra en free; el peor día, no. Matemática con volúmenes
+**[SUPUESTO]** a validar en operación:
+
+- **Crisis (1 técnico × 6 h × 12 consultas/h = 72):** mezcla pesada
+  (70 % investigación 5k + 30 % triage 1.3k) ≈ 280K textos + vigilancia
+  125K = **~405K vs 200K TPD** ❌. Consultas ~416 vs 1.000 RPD ✓: el que
+  corta es siempre el cupo diario de textos, no el de consultas.
+- **Jornada de construcción** (altas, dashboards, idas y vueltas con
+  confirmación): tareas de escritura y contexto grande ≈ 8k cada una;
+  8 tareas/h × 8 h ≈ **~500K/día** ❌.
+- **Costo del peor día en pago (120b):** ~500K in + ~80K out ≈
+  **u$d 0,15 por día**. Aun con 20 días pico al mes: ~u$d 3. El dinero
+  nunca es la restricción; los techos sí, y el pago los multiplica ×10.
+
+Palancas estructurales (antes de cambiar de proveedor): capa determinista
+para lo repetitivo —en crisis todos preguntan lo mismo— (costo y cupo
+cero), modelos por nivel (chico para triage, grande para investigar),
+caché por incidente, historial corto y heartbeat. Con el 80 % repetitivo
+por vía determinista, el día pico vuelve a entrar en free.
+
+Regla de decisión: free hasta 429 diarios reiterados; entonces pago mismo
+proveedor (sin cambio técnico). LLM local solo por privacidad o
+continuidad, con benchmark previo. Presupuesto de desarrollo (herramientas
+del equipo) y de operación (Groq del cliente) van separados.
+
+## 5. Recomendación por etapas (honesta)
+
 1. **Piloto: free actual, u$d 0.** Alcanza con margen; sirve para validar
    volúmenes reales y afinar prompts.
 2. **Antes de producción: benchmark ciego qwen vs gpt-oss-20b** (mismas 4
@@ -96,7 +124,7 @@ modelos): backoff+retry ante 429, pausa entre vueltas del loop, historial
 corto, heartbeat (saltear el LLM si nada cambió), comandos deterministas
 sin IA para lo repetitivo (ya previsto en §5 de la propuesta).
 
-## 5. Benchmark ciego 2026-10-12 (4 tareas Etapa 1 × 2 corridas, mismo harness)
+## 6. Benchmark ciego 2026-10-12 (4 tareas Etapa 1 × 2 corridas, mismo harness)
 
 | Modelo | Éxito | Formato | Calidad útil | Lectura |
 |---|---|---|---|---|
