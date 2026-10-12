@@ -1,6 +1,6 @@
 """Router tests: cliente fake, sin red."""
 
-from agent.router import L2_FALLBACK, classify_l1, route, route_l0
+from agent.router import L2_NO_MODEL, classify_l1, handle_l2, route, route_l0
 
 
 class FakeClient:
@@ -42,8 +42,43 @@ def test_l1_keyword_routes_to_l0_handler():
     assert "CPU alta" in text
 
 
-def test_l2_stub():
+def test_l2_sin_modelo_avisa_en_vez_de_romper(monkeypatch):
+    monkeypatch.delenv("LLM_MODEL", raising=False)
     level, text = route("correlaciona la causa raiz con runbooks", FakeClient())
     assert level == "L2"
-    assert text.startswith(L2_FALLBACK)
-    assert "mcp/curated-tools.json" in text
+    assert text == L2_NO_MODEL
+
+
+class FakeModel:
+    def __init__(self, steps):
+        self.steps = steps
+
+    def decide(self, goal, history):
+        i = min(len(history), len(self.steps) - 1)
+        return self.steps[i]
+
+
+class FakeMCP:
+    def __init__(self, payload=None):
+        self.payload = payload
+        self.calls = []
+
+    def call_tool(self, name, args=None):
+        self.calls.append((name, args or {}))
+        return self.payload
+
+
+def test_l2_con_fakes_corre_el_loop(tmp_path):
+    model = FakeModel(
+        [
+            {"thought": "veo problemas",
+             "action": {"tool": "problem_active_get", "args": {}}},
+            {"thought": "listo", "answer": "2 problemas activos."},
+        ]
+    )
+    fake = FakeMCP(payload=[{"name": "CPU alta"}, {"name": "Disco lleno"}])
+    log = tmp_path / "audit.jsonl"
+    text = handle_l2("¿hay alertas?", model=model, client=fake, audit_path=log)
+    assert text == "2 problemas activos."
+    assert fake.calls == [("problem_active_get", {})]
+    assert log.exists()

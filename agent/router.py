@@ -2,12 +2,19 @@
 
 L0: reglas exactas (0 tokens) -> handlers directos.
 L1: clasificador por keywords simple -> MISMO handler de L0.
-L2: stub, no implementado (escala a agente/MCP en fases siguientes).
+L2: agente local l2agent (loop + catálogo curado); sin LLM_MODEL configurado
+    avisa en vez de romper.
 """
 
 from __future__ import annotations
 
 from typing import Any, Callable, Protocol
+
+from l2agent.guardrails import DeniedHook
+from l2agent.loop import run_loop
+from l2agent.main import build_client_from_env, build_model_from_env
+from l2agent.model import ChatModel
+from l2agent.tools import ToolClient
 
 
 class ZabbixReader(Protocol):
@@ -16,7 +23,10 @@ class ZabbixReader(Protocol):
     def get_hosts(self, limit: int = ...) -> list[dict[str, Any]]: ...
 
 
-L2_FALLBACK = "no implementado, usar MCP"
+L2_NO_MODEL = (
+    "L2 necesita un cerebro: definí LLM_MODEL (y opcionalmente LLM_BASE_URL) "
+    "y reintentá. Sin modelo no hay agente, solo stub."
+)
 
 
 def handle_estado(client: ZabbixReader) -> str:
@@ -40,14 +50,29 @@ def handle_ack(client: ZabbixReader) -> str:
     )
 
 
-def handle_l2(_text: str) -> str:
-    try:
-        from mcp.catalog import all_tools
+def handle_l2(
+    text: str,
+    *,
+    model: ChatModel | None = None,
+    client: ToolClient | None = None,
+    role: str = "operator",
+    audit_path: str = "audit.jsonl",
+    on_denied: DeniedHook = None,
+) -> str:
+    """L2 real: el objetivo corre por el loop con el catálogo curado.
 
-        count = len(all_tools())
-    except Exception:
-        return L2_FALLBACK
-    return f"{L2_FALLBACK} (curated catalog: {count} tools, see mcp/curated-tools.json)"
+    Sin inyección (producción/CLI): modelo y cliente salen del env. Sin
+    LLM_MODEL no se rompe: avisa qué falta. En tests se inyectan fakes.
+    """
+    try:
+        the_model = model if model is not None else build_model_from_env(role)
+        the_client = client if client is not None else build_client_from_env()
+    except SystemExit:
+        return L2_NO_MODEL
+    return run_loop(
+        text, model=the_model, client=the_client,
+        audit_path=audit_path, on_denied=on_denied,
+    )
 
 
 Handler = Callable[[ZabbixReader], str]

@@ -1,0 +1,15 @@
+# La imagen lleva código, no laburo en curso.
+__pycache__/
+*.pyc
+.venv/
+tests/
+.pytest_cache/
+.git/
+.env
+.gitignore
+odd/
+docs/
+notes/
+*.md
+*.pdf
+*.pptx

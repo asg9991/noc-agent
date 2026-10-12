@@ -44,7 +44,7 @@ Niveles (ver `agent/router.py`):
 
 - L0 exacto (`estado`, `ack`): 0 tokens.
 - L1 keywords (problema/alerta/estado/version/hosts/salud): mismo handler, sin LLM.
-- L2 resto: stub `"no implementado, usar MCP"` — esperado hasta Fase 3/4.
+- L2 resto: agente local `l2agent` (loop + catálogo curado; sin `LLM_MODEL` avisa en vez de romper).
 
 ## 4. HUB MCP ZBX (thread [13])
 
@@ -63,7 +63,9 @@ Estado actual:
 Pendiente operativo:
 
 - [x] Agregar `mcp/` client config curada (~15–25 tools, nunca catálogo completo) — desbloquea L2 real.
-- [ ] Doc de operación del hub + rotación de tokens (hoy solo hallazgo de auditoría, sin procedimiento).
+- [ ] Doc de operación del hub + rotación de tokens (procedimiento 2026-10-11 en `odd/tasks/l2-local-agent.md` §Cierre: token vía UI, toml, restart, borrar viejo).
+- [ ] Clasificación `error_auth` en `l2agent`: distinguir credencial vencida de error transitorio + alarma (hoy todo error va a `result="error"` sin clasificar).
+- [x] Telemetría de piloto free: `usage_total` en `ChatModel` + `usage` en `respuesta_final` del audit (50 passed).
 - [ ] Mover hub a VM dedicada fuera del compose (decisión de arquitectura).
 - [ ] Revisar permisos y secretos según auditoría (toml con token, `.env` group-writable, token Telegram en historial) — rotar y corregir permisos, sin pegar valores acá.
 
@@ -79,7 +81,7 @@ Pendiente operativo:
 
 ## 6. Gaps abiertos (para [31])
 
-1. `mcp/` client config ausente (bloquea L2 real; server ya elegido: initMAX 1.36.1, decisión Fase 2 del 2026-09-26).
+1. `mcp/` client config + L2 real hechos (loop `l2agent` verificado en lab 2026-10-11; server initMAX 1.36.1, decisión Fase 2 del 2026-09-26).
 2. Adapter Discord ausente (Fase 4).
 3. Runbook de upgrade `instalacion.md` (en `zbx-in-docker/docs/`) parcial: 3 pasos sin backup/restore/verificación.
 4. Sin troubleshooting general, sin backups automáticos/offsite, sin rotación de secretos (los 3 faltantes de la auditoría).
@@ -90,3 +92,45 @@ Pendiente operativo:
 - Auditoría: `docs/auditoria-2026-09-10.md`.
 - Diseño lab / upgrade parcial: `zbx-in-docker/docs/instalacion.md`.
 - Diario: cliente [31] canónica (sup [11] + [13]).
+
+## 8. Mapa de triggers (qué despierta al agente)
+
+Estado 2026-10-11: solo CLI/`main.py` existen (terminal). Hilos, botones y
+adapters son arquitectura (Fase 4), no implementación. Esta tabla es el
+contrato a implementar; es lo que el técnico VE (la capa que vende).
+
+| # | Lo dispara | Llega por | Atiende | Estado |
+|---|---|---|---|---|
+| 1 | Zabbix dispara alerta | webhook → adapter → hilo del incidente con botones | L0 | futuro (adapter Fase 4) |
+| 2 | Guardia clickea Ack/Detalle | botón del hilo | L0/L1 | futuro (adapter Fase 4) |
+| 3 | Guardia pregunta en el hilo | reply en el hilo (el historial es el contexto) | L2 | futuro (adapter Fase 4) |
+| 4 | Técnico profundiza solo | su agente → directo al hub | nadie (self-service) | hoy (token + rol propios + `docs/kit-tecnico.md`) |
+| 5 | Técnico pide criterio | mensaje al noc-agent vía adapter | L2 | futuro (adapter Fase 4) |
+| 6 | Watch programado | cron → `main.py` con goal fijo | L2 | futuro (memoria pendiente) |
+| 7 | Agente externo pide criterio | `pedir_criterio` como tool (agent-as-tool) | L2 | futuro (decisiones: quién paga tokens, contrato de escalamiento) |
+
+Reglas:
+
+- La ambigüedad en el agente PROPIO del técnico NO despierta al noc-agent:
+  su agente es otro consumidor del hub; su loop (o su fallo) es suyo.
+  Derivar criterio al noc-agent sería un handoff diseñado, no automático.
+- Cada fila necesita antes de cliente: transporte, auth y contrato de formato.
+- cliente es mail-first: hilo = thread de mail; botones = los que el mail
+  permita (links/keywords), no componentes Discord.
+
+## 9. Watch proactivo: notas de diseño (futuro, fila 6 del mapa)
+
+Idea (2026-10-11): cron barre, guarda en DB, compara, notifica solo novedad.
+
+- **Baseline en DB, no archivos**: tablas `sweeps` + `observations`
+  (eventid, host, severidad, ts). La historia se CONSULTA (SQL), no se
+  grepea. El JSONL sigue como evidencia append-only; la DB es el índice
+  consultable (misma dualidad que auditoría §7 de arquitectura).
+- **Taxonomía antes de notificar**: NUEVO (eventid no visto en X días) →
+  alarma; RECURRENTE (ya visto) → aviso con link al anterior, sin repetir
+  alarma; HISTÓRICO (contexto para correlación, no notifica); RECUPERADO
+  (se normalizó) → digest.
+- **Barato primero**: gate L0 (diff contra DB, 0 tokens) → LLM solo si
+  cambió algo. 95% de barridos gratis.
+- **Heartbeat**: el watch emite "sigo vivo"; su silencio es incidente del
+  vigilante (dead-man switch).
