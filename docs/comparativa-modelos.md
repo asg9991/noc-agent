@@ -101,7 +101,7 @@ sin IA para lo repetitivo (ya previsto en §5 de la propuesta).
 | Modelo | Éxito | Formato | Calidad útil | Lectura |
 |---|---|---|---|---|
 | `qwen3-32b` (actual) | 3–4/8 | JSON ok | Buena en triage/explicación; honesto sin datos | Baseline; 429 solo en ráfaga |
-| `gpt-oss-20b` | 2/8 (pre-adapter) | — | Medido antes del adapter (misma 400 que el 120b). Misma familia → mismo desbloqueo; calidad **pendiente de medir** con adapter |
+| `gpt-oss-20b` | **5/8** | Nativo ok | Adapter funciona: investiga-host 2/2 con datos reales. Flojo en estrategia (repite la misma acción y dispara el anti-loop) y más verborrágico (~800 tok salida/corrida vs ~350 qwen). Pago S2 ≈ u$d 1.00/mes |
 | `gpt-oss-120b` | **6/8** | Nativo ok | La mejor calidad hasta acá: resolvió *investigar host* (0/4 en qwen) con tools reales, explicaciones con umbral. Los 2 fallos son 429 en la tarea más pesada (mismo pacing intra-tarea, independiente del modelo) |
 | `allam-2-7b` (500K/día) | 2/8 nominal, 0/8 útil | No sigue el JSON | Repite la misma acción (dispara anti-repetición), devuelve prosa, respuestas evasivas genéricas | Presupuesto generoso, protocolo pobre: 7B no alcanza para este loop |
 
@@ -109,9 +109,8 @@ Respuestas completas por modelo en `/tmp/opencode/bench_*.jsonl` (calidad a
 juicio del lector; el éxito/formato es automático).
 
 Consecuencia para la recomendación: el 120b con adapter es el mejor
-candidato técnico (calidad) y sale ~u$d 1.30/mes en pago a volumen S2
-(5.3M in × 0.15 + 0.85M out × 0.60); el 20b queda en ~u$d 0.65/mes
-pendiente de medir calidad con el mismo adapter (misma familia, mismo
-desbloqueo). qwen sigue como producción free. allam descartado. Ambos
-precios pagos son irrelevantes frente a cualquier VM; el free sigue
-alcanzando para piloto.
+candidato técnico (6/8, calidad) y sale ~u$d 1.30/mes en pago a volumen S2;
+el 20b rinde 5/8 con el mismo adapter pero repite acciones y gasta más
+salida (~u$d 1.00/mes). qwen sigue como producción free. allam descartado.
+Todos los precios pagos son irrelevantes frente a cualquier VM; el free
+sigue alcanzando para piloto.
