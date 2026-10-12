@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>NOC Agent — Modelos de IA: comparativa y costos (2026-10-12)</title>
+<style>
+  @page { size: A4; margin: 20mm 18mm; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 11.5pt; line-height: 1.5; color: #1a1a1a; }
+  h1 { font-size: 20pt; margin-bottom: 2px; }
+  h2 { font-size: 14pt; color: #0b5394; border-bottom: 1px solid #0b5394; padding-bottom: 2px; margin-top: 26px; }
+  h3 { font-size: 12pt; margin-bottom: 4px; }
+  .sub { color: #555; font-size: 10.5pt; margin-top: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 10.5pt; }
+  th, td { border: 1px solid #999; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #eaf2fa; }
+  .ok { color: #0a7a2e; font-weight: bold; }
+  .warn { color: #b26a00; font-weight: bold; }
+  .no { color: #b00020; font-weight: bold; }
+  .box { background: #f4f8fc; border-left: 4px solid #0b5394; padding: 8px 12px; margin: 12px 0; }
+  .foot { font-size: 9.5pt; color: #555; margin-top: 24px; border-top: 1px solid #bbb; padding-top: 6px; }
+  ul { margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<h1>NOC Agent — Modelos de IA: comparativa y costos</h1>
+<p class="sub">Informe técnico para el cliente · 12 de octubre de 2026 · Piloto Etapa 1 (solo lectura)</p>
+
+<h2>1. Resumen ejecutivo</h2>
+<div class="box">
+El piloto completo (consultas diarias + vigilancia automática cada 15 minutos)
+funciona con el plan <strong>gratuito</strong> usando el modelo
+<strong>GPT OSS 120B</strong>, que fue el de mejor desempeño en las pruebas
+(6 de 8 tareas correctas). Costo del piloto: <strong>u$d 0</strong>.
+Los modelos pagos solo aparecen como camino de crecimiento: a los volúmenes
+estimados costarían entre <strong>u$d 1 y u$d 8 por mes</strong>, y solo se
+justifican si el uso supera el cupo gratuito.
+</div>
+
+<h2>2. Cómo funciona el servicio (gratis vs. pago)</h2>
+<p>
+El proveedor (Groq) ofrece los <strong>mismos modelos en dos planes</strong>:
+</p>
+<ul>
+  <li><strong>Gratis:</strong> sin tarjeta, con un cupo diario de uso
+    (para el modelo elegido: 1.000 consultas y 200.000 fragmentos de texto
+    por día). Verificado en la consola de la cuenta el 12/10/2026.</li>
+  <li><strong>Pago:</strong> mismos modelos, cupo ~10 veces mayor, se paga
+    solo por lo consumido (desde u$d 1 acumulado, sin suscripción).</li>
+</ul>
+<p>
+En criollo: es como una SUBE con viajes gratis limitados por día; si algún
+día se necesitan más viajes, se paga por cada uno a precio de centavos.
+<strong>Nada de lo medido en este informe costó dinero.</strong>
+</p>
+
+<h2>3. Tabla comparativa — modelos gratuitos</h2>
+<table>
+  <tr><th>Modelo</th><th>Cupo gratis/día</th><th>Prueba (8 tareas)</th>
+      <th>A favor</th><th>En contra</th></tr>
+  <tr>
+    <td><strong>GPT OSS 120B</strong> ⭐ elegido</td>
+    <td>1.000 consultas<br>200.000 textos</td>
+    <td class="ok">6/8</td>
+    <td>El más preciso: resolvió investigaciones que los demás no pudieron.
+        Respuestas ordenadas, con datos reales.</td>
+    <td>Las tareas muy largas seguidas pueden esperar unos segundos
+        (se resuelve con pausas automáticas).</td>
+  </tr>
+  <tr>
+    <td><strong>Qwen 32B</strong> (reserva)</td>
+    <td>1.000 consultas<br>200.000 textos</td>
+    <td>3–4/8</td>
+    <td>Bueno en resúmenes simples. Alternativa si el titular no responde.</td>
+    <td>Falla en investigaciones paso a paso (no sigue el procedimiento).</td>
+  </tr>
+  <tr>
+    <td><strong>GPT OSS 20B</strong></td>
+    <td>1.000 consultas<br>200.000 textos</td>
+    <td>5/8</td>
+    <td>Más rápido. Investiga bien.</td>
+    <td>A veces repite la misma consulta en vez de variar; respuestas largas
+        (gastan más). Segundo puesto.</td>
+  </tr>
+  <tr>
+    <td><strong>Allam 7B</strong></td>
+    <td>7.000 consultas<br>500.000 textos</td>
+    <td class="no">0/8 útiles</td>
+    <td>Cupo generoso.</td>
+    <td>No sigue instrucciones: repite acciones y responde vaguedades.
+        <strong>Descartado.</strong></td>
+  </tr>
+</table>
+
+<h2>4. Qué se probó (números)</h2>
+<ul>
+  <li><strong>Chequeo básico del sistema (3/3):</strong> conexión, lista de
+    problemas activos, historial de un equipo y bloqueo correcto de una
+    acción prohibida.</li>
+  <li><strong>8 tareas reales por modelo</strong> (resumir problemas,
+    investigar un equipo, explicar por qué sonó una alarma, traer valores):
+    resumen simple ≈ 1.300 textos; investigación completa ≈ 2.000–6.000.</li>
+  <li><strong>Prueba de exigencia (10 consultas seguidas sin pausa):</strong>
+    8 fueron frenadas por límite de velocidad. Con 60 segundos entre
+    consultas: 5/5 correctas. Conclusión: el límite es de <em>velocidad por
+    minuto</em>, no de cantidad diaria — el diseño final incluye pausas y
+    reintentos automáticos.</li>
+</ul>
+
+<h2>5. El piloto entra en el plan gratuito (verificación)</h2>
+<table>
+  <tr><th>Uso del piloto</th><th>Consumo/día</th><th>Cupo gratis</th><th>Margen</th></tr>
+  <tr><td>10 consultas de técnicos</td><td>~27.000 textos, ~30 consultas</td>
+      <td>200.000 / 1.000</td><td class="ok">sobra</td></tr>
+  <tr><td>Vigilancia cada 15 min</td><td>~125.000 textos, ~200 consultas</td>
+      <td>200.000 / 1.000</td><td class="ok">entra</td></tr>
+  <tr><td><strong>Total piloto</strong></td><td><strong>~150.000 / ~230</strong></td>
+      <td>200.000 / 1.000</td><td class="ok"><strong>cubierto</strong></td></tr>
+</table>
+<p>Volúmenes de uso supuestos a validar en operación (marcados como supuesto
+en la documentación de trabajo).</p>
+
+<h2>6. Modelos pagos: solo como crecimiento</h2>
+<p>Si el uso creciera (más equipos, vigilancia cada 5 minutos), el plan
+gratuito quedaría chico. El paso es el mismo proveedor, sin cambiar nada
+técnico:</p>
+<table>
+  <tr><th>Modelo</th><th>Precio (por millón)</th><th>Costo estimado S2*</th></tr>
+  <tr><td>GPT OSS 120B</td><td>u$d 0,15 + 0,60</td><td>~u$d 1,30/mes</td></tr>
+  <tr><td>GPT OSS 20B</td><td>u$d 0,075 + 0,30</td><td>~u$d 1,00/mes</td></tr>
+</table>
+<p>*S2 = 30 consultas/día + vigilancia cada 15 min (supuesto). Señal para
+cambiar: avisos de cupo diarios reiterados. Descartado con motivo: LLM en
+servidor propio (costoso, sin datos que lo justifiquen) y alternativas
+gratuitas sin límites publicados o que usan los datos para entrenar.</p>
+
+<div class="foot">
+Fuentes: consola Groq de la cuenta (límites y modelos de producción,
+12/10/2026), docs Groq de precios y límites, mediciones propias en
+laboratorio con bitácora de auditoría. Precios en dólares. Supuestos de
+volumen a validar con el cliente antes de producción.
+</div>
+
+</body>
+</html>
