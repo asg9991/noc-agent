@@ -125,17 +125,55 @@ generó cargo alguno.</strong>
 <h2>6. Modelos pagos: solo como crecimiento</h2>
 <p>Si el uso creciera (más equipos, vigilancia cada 5 minutos), el plan
 gratuito resultaría insuficiente. El cambio es con el mismo proveedor,
-sin modificaciones técnicas:</p>
+sin modificaciones técnicas. Los precios se pagan solo por consumo, sin
+abonos (desde u$d 1 acumulado).</p>
 <table>
-  <tr><th>Modelo</th><th>Precio (por millón)</th><th>Costo estimado S2*</th></tr>
+  <tr><th>Modelo (mismo proveedor)</th><th>Precio (por millón)</th><th>Costo estimado S2*</th></tr>
   <tr><td>GPT OSS 120B</td><td>u$d 0,15 + 0,60</td><td>~u$d 1,30/mes</td></tr>
   <tr><td>GPT OSS 20B</td><td>u$d 0,075 + 0,30</td><td>~u$d 1,00/mes</td></tr>
 </table>
-<p>*S2 = 30 consultas/día + vigilancia cada 15 min (supuesto). Señal para
-cambiar: avisos de cupo diarios reiterados. Alternativas descartadas con
-fundamento: LLM en servidor propio (costoso, sin datos que lo justifiquen)
-y alternativas gratuitas sin límites publicados o que utilizan los datos
-para entrenar.</p>
+<p>*S2 = 30 consultas/día + vigilancia cada 15 min (supuesto).</p>
+
+<h2>7. Vía oficial: modelos de otros proveedores</h2>
+<p>
+Los modelos de las suscripciones de desarrollo no pueden reutilizarse como
+motor del servicio (licencia de uso personal interactivo, sin clave para
+servidor propio ni auditoría). Sus capacidades equivalentes sí están
+disponibles por vía oficial, con clave propia y contrato empresarial
+(planes pagos con términos que excluyen el uso de los datos para
+entrenamiento, según sus condiciones publicadas). No tienen plan gratuito:
+son alternativa de escala, no de piloto.
+</p>
+<table>
+  <tr><th>Modelo (vía oficial)</th><th>Precio (por millón)</th><th>Rol posible</th></tr>
+  <tr><td>Haiku (Anthropic)</td><td>u$d 0,05 + 0,25</td><td>Tareas simples y clasificación, al costo más bajo del mercado</td></tr>
+  <tr><td>GPT nano / mini (OpenAI)</td><td>u$d 0,05 + 0,40 / 0,25 + 2,00</td><td>Mismo esquema por niveles</td></tr>
+  <tr><td>Sonnet (Anthropic)</td><td>u$d 2,00 + 10,00</td><td>Investigación profunda de frontera, si la calidad lo exige</td></tr>
+</table>
+<p>Calidad de estos modelos en este sistema: aún no medida (requiere el mismo
+protocolo de 8 tareas). Esquema recomendado a futuro: modelo económico para
+triage y clasificación, modelo superior solo para investigación compleja.</p>
+
+<h2>8. Proyección de costos por escenario (mensual, 30 días)</h2>
+<p>Volúmenes supuestos a validar en operación. Unidad de cálculo medida:
+resumen ≈ 1.300 textos, investigación ≈ 6.000, sesión de incidente completa
+≈ 12.000.</p>
+<table>
+  <tr><th>Escenario</th><th>Plan gratuito</th><th>Pago 120B</th>
+      <th>Haiku (vía oficial)</th><th>Sonnet (vía oficial)</th></tr>
+  <tr><td><strong>Piloto</strong>: 10 consultas/día</td>
+      <td class="ok">u$d 0 (sobra)</td><td>~u$d 0,20</td><td>~u$d 0,06</td><td>~u$d 2,40</td></tr>
+  <tr><td><strong>Operación (S2)</strong>: 30 consultas + vigilancia c/15 min</td>
+      <td class="warn">u$d 0 (al límite)</td><td>~u$d 1,30</td><td>~u$d 0,50</td><td>~u$d 19,60</td></tr>
+  <tr><td><strong>Día de crisis</strong> (20 incidentes, por día)</td>
+      <td class="no">no entra (~365K vs 200K)</td><td>~u$d 0,08</td><td>~u$d 0,03</td><td>~u$d 1,20</td></tr>
+</table>
+<p>Lectura: el plan gratuito cubre el piloto y la operación normal; un día
+de crisis se absorbe con el plan pago por centavos ese día, o con diseño
+(capa determinista para lo repetitivo). Señal objetiva para subir de plan:
+avisos de cupo diarios reiterados. Quedaron descartados con fundamento:
+servidor propio (costoso, sin datos que lo justifiquen) y gratuitos sin
+límites publicados o que utilizan los datos para entrenar.</p>
 
 <div class="foot">
 Fuentes: consola Groq de la cuenta (límites y modelos de producción,
