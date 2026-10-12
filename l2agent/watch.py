@@ -147,6 +147,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="ventana del heartbeat en segundos (solo chequeo)")
     parser.add_argument("--check-alive", action="store_true",
                         help="no barre: solo dice si el vigilante sigue vivo")
+    parser.add_argument("--notify", action="store_true",
+                        help="aplica compuertas de aviso al barrido (alarma/digest)")
+    parser.add_argument("--outbox", default="outbox.jsonl",
+                        help="buzón de alarmas para el futuro adapter")
+    parser.add_argument("--min-severity", default="High",
+                        help="severidad mínima que alarma (default High)")
     args = parser.parse_args(argv)
     if args.check_alive:
         print("vivo" if is_alive(args.db, args.max_age) else "MUERTO")
@@ -162,6 +168,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  NUEVO {p['eventid']} {p.get('host','')} {p.get('severity','')}")
     for p in r["recovered"]:
         print(f"  RECUPERADO {p['eventid']} {p.get('host','')}")
+    if args.notify:
+        from l2agent import notify as notify_mod
+        d = notify_mod.decide(r, outbox_path=args.outbox,
+                              min_severity=args.min_severity)
+        print(f"aviso: alarmas={len(d['alarms'])} digest={len(d['digest'])}")
+        for a in d["alarms"]:
+            print(f"  ALARMA {a['subject']}")
     return 0
 
 

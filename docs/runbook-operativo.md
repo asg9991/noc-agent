@@ -134,3 +134,22 @@ Idea (2026-10-11): cron barre, guarda en DB, compara, notifica solo novedad.
   cambió algo. 95% de barridos gratis.
 - **Heartbeat**: el watch emite "sigo vivo"; su silencio es incidente del
   vigilante (dead-man switch).
+
+## 9b. Lógica de aviso: qué suena y qué no (implementado, `l2agent/notify.py`)
+
+Principio: "cambió una métrica → suena" fabrica sordera. El barrido ni
+siquiera mira valores, solo membresía de la lista de problemas; después,
+tres compuertas en orden:
+
+1. **Taxonomía**: solo NUEVO puede alarmar; RECUPERADO va a digest
+   (resumen, no interrupción); RECURRENTE es silencio deliberado.
+2. **Severidad**: umbral configurable (default High). Lo menor va a digest.
+   Severidad ilegible no alarma pero queda en digest marcada (no se pierde).
+3. **Cooldown 24h**: el mismo evento no re-alarma aunque re-nazca (flapping
+   alta → recuperado → alta). La repetición queda en digest como "cooldown".
+
+Destino: outbox JSONL con asunto y cuerpo listos para mail (hilos del
+futuro adapter); cliente es mail-first. Cero tokens: plantillas, no LLM.
+CLI: `python -m l2agent.watch --db watch.db --notify [--min-severity High]`.
+Pendiente: timer systemd 15 min + redactado LLM solo sobre novedad
+confirmada + transporte mail (adapter Fase 4).
