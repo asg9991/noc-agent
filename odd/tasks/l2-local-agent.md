@@ -55,16 +55,35 @@ Route: inline (delegación no disponible en este runtime) + piezas chicas ya ent
 
 ## Siguiente paso
 
-- Slice watch (diario #50 resto): state/histéresis/heartbeat con cadencia baja
-  + backoff, u Ollama local (Fase 2); el gratis no da para loop cerrado.
+- Slice watch (diario #53): con estos números, el diseño debe incluir
+  backoff+retry ante 429 (usar header `retry-after`), prompts cortos
+  (disciplina de tokens estira el presupuesto diario) y heartbeat
+  (saltear el LLM si nada cambió). Decisión de proveedor pendiente (ver
+  matriz abajo): politically gratis con cadencia ≥15 min, paid (~u$d 2/mes),
+  o benchmark local.
 
-## Evidencia #50: sonda de techo + kit §6 (2026-10-12)
+## Evidencia #50: sonda de techo + kit §6 (2026-10-12, corregido)
 
 - Kit §6 3/3 verde contra lab: handshake con sesión, `problem_active_get`
   (3 activos), `history_get` (raw Zabbix), `host_create` denegada local.
-- Sonda N=10 (`scripts/sonda_techo.py`): 2 ok, 8 cortes por Groq 429
-  (`modelo_decide error_transient`). Techo confirmado: el gratis no aguanta
-  ráfaga (3 llamadas rápidas → throttle).
+- Exp 1 (ráfaga N=10): 2 ok, 8 cortes por Groq 429. El gratis NO aguanta
+  ráfaga (throttle tras ~3 llamadas seguidas).
+- Exp 2 (5 corridas espaciadas 60s): 5/5 ok, 1.2–2.1s por corrida,
+  ~1.1–2.4k tokens in + ~0.2–0.4k out por corrida. La cadencia cura el
+  429 → el techo es por-minuto (RPM 30 o TPM 8K), NO diario.
+- Límites free qwen/qwen3-32b (docs Groq 2026-10-09): 30 RPM, 8K TPM,
+  1K RPD, 200K TPD.
+- Matemática diaria (corrida ≈ 2k tokens, 2–3 req):
+  - watch 5 min (288/día): ~580K tok vs 200K TPD ❌, ~700 req vs 1K ⚠️
+  - watch 10 min (144/día): ~290K vs 200K ⚠️ marginal
+  - watch 15 min (96/día): ~190K vs 200K ✓ justo
+- Opciones (SIN veredicto, falta data):
+  a) gratis + cadencia ≥15 min + backoff (cero costo, margen fino);
+  b) Groq paid (~10x límites, ~u$d 2/mes a este volumen);
+  c) modelo chico (llama-3.1-8b: 500K TPD — verificar vigencia en
+     console.groq.com/settings/limits, reportes contradictorios);
+  d) LLM local en VM (SIN DATOS: un 27B Q8 pide ~30GB VRAM; en CPU de
+     T14 serían ~2–5 tok/s; falta benchmark de latencia y calidad).
 - Bugs de la sonda (la primera corrida mintió 10/10 ok): la sonda ignoraba
   el return del loop (los "corté" contaban como éxito) y necesitaba
   `PYTHONPATH=.`. Fix: cuenta `cortes`, bootstrap de `sys.path`.
