@@ -20,6 +20,7 @@ Conversational operations assistant for infrastructure monitoring. It answers qu
 | Cost doctrine | L0 deterministic (0 tokens) → L1 classifier (~$0) → L2 agent (curated tools only). Cheapest level that resolves each interaction wins. |
 | Channels | Channel-agnostic adapters (mail, Discord, Telegram) over one orchestrator vocabulary, plus n8n at the edge (transform only, never decides). Code agents (OpenCode/Claude/Codex) query the same MCP hub directly with their own token/role. Reference instance: mail-first. |
 | Security | Layered: network → bearer token → OAuth 2.1; least privilege; per-user Zabbix credentials as production goal; explicit confirmation for writes; full audit trail. |
+| Client artifacts | Never here. Client-named files live in the per-client private repo (`noc-agent-<cliente>`, under `client/`), seeded from this generic repo. This public repo stays generic. |
 
 ## Repository structure
 
