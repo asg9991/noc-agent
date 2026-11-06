@@ -48,7 +48,8 @@ python3 -m pytest -q
 ```
 
 Niveles: `estado`/`ack` exactos = L0; lenguaje natural con keywords
-("hay alertas?", "problemas", "versión") = L1 al mismo handler;
+("hay alertas?", "problemas", "versión", "¿cómo está el zabbix?") = L1 al
+mismo handler;
 resto = L2 (`l2agent`: loop con modelo por env; sin `LLM_MODEL` avisa
 en vez de romper). Solo lectura: el CLI no escribe en Zabbix.
 

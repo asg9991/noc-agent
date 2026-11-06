@@ -8,6 +8,7 @@ L2: agente local l2agent (loop + catálogo curado); sin LLM_MODEL configurado
 
 from __future__ import annotations
 
+import re
 from typing import Any, Callable, Protocol
 
 from l2agent.guardrails import DeniedHook
@@ -83,18 +84,27 @@ L0_EXACT: dict[str, Handler] = {
     "ack": handle_ack,
 }
 
-# L1: keywords -> handler L0 (mismo handler, sin LLM).
-L1_KEYWORDS: list[tuple[str, Handler]] = [
-    ("problema", handle_ack),
-    ("problemas", handle_ack),
-    ("alerta", handle_ack),
-    ("alertas", handle_ack),
-    ("ack", handle_ack),
-    ("estado", handle_estado),
-    ("version", handle_estado),
-    ("hosts", handle_estado),
-    ("salud", handle_estado),
+# L1: palabras clave -> handler L0 (mismo handler, sin LLM). La coincidencia
+# es por PALABRA COMPLETA sin tildes ("versión" matchea "version"), nunca por
+# subcadena: "backup" no trae "ack" ni "estación" trae "estado".
+_ACENTOS = str.maketrans("áéíóúüñÁÉÍÓÚÜÑ", "aeiouunAEIOUUN")
+
+
+def _words(text: str) -> set[str]:
+    """Palabras en minúscula, sin tildes ni puntuación."""
+    limpio = text.translate(_ACENTOS).lower()
+    return set(re.findall(r"[a-z0-9]+", limpio))
+
+
+L1_KEYWORDS: list[tuple[frozenset[str], Handler]] = [
+    (frozenset({"problema", "problemas", "alerta", "alertas", "ack"}), handle_ack),
+    (frozenset({"estado", "version", "versions", "versiones",
+                "host", "hosts", "salud"}), handle_estado),
 ]
+
+# Consultas de estado que no nombran la palabra "estado":
+# "¿cómo está el zabbix?", "cómo están los servers".
+_ESTADO_RE = re.compile(r"\bcomo esta(?:s|n)?\b")
 
 
 def route_l0(text: str) -> Handler | None:
@@ -102,10 +112,12 @@ def route_l0(text: str) -> Handler | None:
 
 
 def classify_l1(text: str) -> Handler | None:
-    lowered = text.strip().lower()
-    for keyword, handler in L1_KEYWORDS:
-        if keyword in lowered:
+    words = _words(text)
+    for keywords, handler in L1_KEYWORDS:
+        if words & keywords:
             return handler
+    if _ESTADO_RE.search(text.translate(_ACENTOS).lower()):
+        return handle_estado
     return None
 
 

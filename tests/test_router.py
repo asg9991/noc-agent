@@ -82,3 +82,17 @@ def test_l2_con_fakes_corre_el_loop(tmp_path):
     assert text == "2 problemas activos."
     assert fake.calls == [("problem_active_get", {})]
     assert log.exists()
+
+
+def test_l1_matchea_los_ejemplos_publicados():
+    for texto in ("hay alertas?", "problemas", "versión",
+                  "¿cómo está el zabbix?"):
+        assert classify_l1(texto) is not None, texto
+
+
+def test_l1_no_matchea_subcadenas_de_palabras():
+    # 'ack' no vive dentro de 'backup'; 'estación'/'estadística' no traen
+    # 'estado'. La coincidencia es por palabra completa, no por subcadena.
+    assert classify_l1("se hizo el backup nocturno") is None
+    assert classify_l1("¿cuándo se instaló la estación?") is None
+    assert classify_l1("la estadística del mes") is None
