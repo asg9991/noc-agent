@@ -53,4 +53,7 @@ def run(
             + f"\n…({rest} más afuera: pedí con filtros o menor límite)"
         )
     text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
-    return text[:MAX_CHARS]
+    if len(text) > MAX_CHARS:
+        return (text[:MAX_CHARS]
+                + f"\n…({len(text) - MAX_CHARS} caracteres afuera: salida recortada)")
+    return text

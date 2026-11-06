@@ -68,3 +68,12 @@ def test_run_deja_pasar_resultado_chico_intacto():
     out = run(fake, "host_get", {"hostid": "1"})
     assert json.loads(out) == {"version": "7.4.13"}
     assert fake.calls == [("host_get", {"hostid": "1"})]
+
+
+def test_run_marca_el_truncado_por_caracteres():
+    from l2agent.tools import MAX_CHARS
+
+    fake = FakeMCP(payload="x" * (MAX_CHARS + 1000))
+    out = run(fake, "history_get", {})
+    assert out.splitlines()[0] == "x" * MAX_CHARS
+    assert "1000 caracteres afuera" in out  # nunca truncado en silencio
