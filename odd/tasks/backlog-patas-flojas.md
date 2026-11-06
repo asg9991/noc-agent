@@ -59,10 +59,14 @@
 
 ## B. Gobernanza de datos (prioridad del cliente)
 
-- [ ] **P8 · `.gitignore` no cubre `*.jsonl`** 🔴
+- [x] **P8 · `.gitignore` no cubre `*.jsonl`** 🔴
   `audit.jsonl` (preguntas de operadores + hosts), `outbox.jsonl` y su
   cooldown pueden entrar al repo con un `git add .`. Agregar los patrones.
   Verificación: `git status` limpio tras correr el agente desde la raíz.
+  Hecho (2026-11-06): `*.jsonl` + `*.jsonl.*` en `.gitignore`. RED observado
+  con artefactos generados por el código real (aparecían `??`); tras el fix
+  `git check-ignore` los cubre a los 3 (audit, outbox y cooldown) y
+  `git status` queda limpio.
 
 - [ ] **P9 · Sin retención ni rotación de audit y watch DB** 🔴
   El JSONL de auditoría y la SQLite del watch (datos del cliente en claro)
