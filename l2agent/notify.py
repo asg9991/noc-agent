@@ -92,7 +92,12 @@ def decide(sweep_result: dict[str, Any],
            min_severity: str = DEFAULT_MIN_SEVERITY,
            cooldown_s: float = DEFAULT_COOLDOWN_S,
            now: float | None = None) -> dict[str, Any]:
-    """Aplica las compuertas a un resultado de sweep. Devuelve alarms+digest."""
+    """Aplica las compuertas a un resultado de sweep. Devuelve alarms+digest.
+
+    El cooldown persiste entre corridas solo si hay `outbox_path` (sin buzón
+    no hay dónde recordar); con `outbox_path=None` rige solo dentro de la
+    llamada.
+    """
     ts = time.time() if now is None else now
     threshold = rank(min_severity)
     if threshold is None:
@@ -108,7 +113,7 @@ def decide(sweep_result: dict[str, Any],
             digest.append({"kind": "severidad-desconocida", **p})
             continue
         if r < threshold:
-            digest.append({"kind": "average-nuevo", **p})
+            digest.append({"kind": "bajo-umbral", **p})
             continue
         last = cooled.get(p["eventid"])
         if last is not None and ts - last < cooldown_s:

@@ -37,7 +37,7 @@ def test_average_no_alarma_va_a_digest(tmp_path):
                       outbox_path=outbox)
     assert r["alarms"] == []  # nada interrumpe
     kinds = sorted(d["kind"] for d in r["digest"])
-    assert kinds == ["average-nuevo", "recuperado"]
+    assert kinds == ["bajo-umbral", "recuperado"]
 
 
 def test_cooldown_suprime_realarma_del_mismo_evento(tmp_path):
@@ -67,3 +67,13 @@ def test_umbral_configurable_deja_pasar_average(tmp_path):
                        "recovered": []}, outbox_path=outbox,
                       min_severity="Average")
     assert len(r["alarms"]) == 1
+
+
+def test_digest_bajo_umbral_es_neutro_en_severidad(tmp_path):
+    outbox = tmp_path / "outbox.jsonl"
+    r = notify.decide({"new": [alarm("e1", sev="Warning"),
+                               alarm("e2", sev="Info")],
+                       "recurrent": [], "recovered": []},
+                      outbox_path=outbox)
+    assert r["alarms"] == []
+    assert [d["kind"] for d in r["digest"]] == ["bajo-umbral", "bajo-umbral"]

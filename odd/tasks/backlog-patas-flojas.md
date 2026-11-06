@@ -44,33 +44,48 @@
   4 tests RED→GREEN (espaciamiento, no-espera si ya pasó, default 0 intacto,
   configuración por env); suite 88 passed.
 
-- [ ] **P3 · L1 no matchea su propio ejemplo documentado** 🟠
-  `agent/router.py:classify_l1` no reconoce "¿cómo está el zabbix?" (la
-  keyword `estado` no matchea `está`): cae a L2 y consume tokens. Decisión:
+- [x] **P3 · L1 no matchea su propio ejemplo documentado** 🟠
+  `agent/router.py:classify_l1` no reconocía "¿cómo está el zabbix?" (la
+  keyword `estado` no matchea `está`): caía a L2 y consumía tokens. Decisión:
   ampliar el matching (normalizar tildes/variantes) o redefinir el contrato
   L1. Verificación: test por cada ejemplo publicado en README/runbook.
+  Hecho (2026-11-06): matching por PALABRA COMPLETA sin tildes (variantes
+  por concepto + frase `como esta(s|n)?` para consultas de estado). Los 4
+  ejemplos publicados matchean L1; pin de falsos positivos de subcadena
+  (backup, estación, estadística). Ejemplo original restaurado en README.
 
-- [ ] **P4 · Falsos positivos en la clasificación de errores** 🟡
-  `l2agent/errors.py` trata "401"/"403" como substrings ("build 4014" →
-  auth) y "connect" matchea "connected/disconnect". Acotar a tokens
+- [x] **P4 · Falsos positivos en la clasificación de errores** 🟡
+  `l2agent/errors.py` trataba "401"/"403" como substrings ("build 4014" →
+  auth) y "connect" matcheaba "connected/disconnect". Acotar a tokens
   completos o patrones de status code. Verificación: tests por caso.
+  Hecho (2026-11-06): códigos por regex con límite de palabra
+  (`\b(?:401|403)\b`, `\b(?:429|50[0234])\b`); "connect" fuera de las
+  huellas (queda "connection"). Test con "4014"/"5000"/"disconnect".
 
-- [ ] **P5 · Truncado silencioso en `tools.run`** 🟡
-  `l2agent/tools.py` corta a `MAX_CHARS` sin aviso (el límite de listas sí
+- [x] **P5 · Truncado silencioso en `tools.run`** 🟡
+  `l2agent/tools.py` cortaba a `MAX_CHARS` sin aviso (el límite de listas sí
   avisa "N más afuera"). Marcar el truncado en el texto devuelto.
   Verificación: test con payload > MAX_CHARS que assertee la marca.
+  Hecho (2026-11-06): texto cortado + `…(N caracteres afuera: salida
+  recortada)`; test con payload MAX_CHARS+1000.
 
-- [ ] **P6 · `watch.main` sin manejo del handshake y chequeo duplicado** 🟡
-  `init()` no tiene try/except (en `loop.py` sí) y `--check-alive` llama
+- [x] **P6 · `watch.main` sin manejo del handshake y chequeo duplicado** 🟡
+  `init()` no tenía try/except (en `loop.py` sí) y `--check-alive` llamaba
   `is_alive()` dos veces. Clasificar el error del handshake como en el loop y
   llamar una sola vez. Verificación: test con cliente que reviente en
   `initialize`.
+  Hecho (2026-11-06): handshake con try/except + `classify` (auth → mensaje
+  de alarma con rotación de token, exit 1); `--check-alive` consulta una
+  sola vez; `main(client=...)` inyectable para tests. 3 tests nuevos.
 
-- [ ] **P7 · Etiqueta engañosa en el digest de `notify`** 🟡
-  `l2agent/notify.py` usa `average-nuevo` para todo lo bajo umbral (también
+- [x] **P7 · Etiqueta engañosa en el digest de `notify`** 🟡
+  `l2agent/notify.py` usaba `average-nuevo` para todo lo bajo umbral (también
   warning/info). Renombrar a algo neutro (`bajo-umbral`) y revisar el caso
   `outbox_path=None` (el cooldown queda sin efecto entre corridas).
   Verificación: tests existentes + uno por la etiqueta.
+  Hecho (2026-11-06): etiqueta `bajo-umbral` con test de neutralidad
+  (Warning/Info) + contrato de cooldown documentado en `decide()`: persiste
+  entre corridas solo con `outbox_path` (sin buzón no hay dónde recordar).
 
 ## B. Gobernanza de datos (prioridad del cliente)
 
