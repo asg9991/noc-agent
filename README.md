@@ -20,7 +20,7 @@ Conversational operations assistant for infrastructure monitoring. It answers qu
 | Cost doctrine | L0 deterministic (0 tokens) → L1 classifier (~$0) → L2 agent (curated tools only). Cheapest level that resolves each interaction wins. |
 | Channels | Channel-agnostic adapters (mail, Discord, Telegram) over one orchestrator vocabulary, plus n8n at the edge (transform only, never decides). Code agents (OpenCode/Claude/Codex) query the same MCP hub directly with their own token/role. Reference instance: mail-first. |
 | Security | Layered: network → bearer token → OAuth 2.1; least privilege; per-user Zabbix credentials as production goal; explicit confirmation for writes; full audit trail. |
-| Client artifacts | Never here. Client-named files live in the per-client private repo (`noc-agent-<cliente>`, under `client/`), seeded from this generic repo. This public repo stays generic. |
+| Client artifacts | Canonical home: the per-client private repo (`noc-agent-<cliente>`, under `client/`), seeded from this generic repo. This checkout is also a **lab**: client artifacts and mentions may exist locally under `client/<cliente>/`, organized per client and excluded via `.git/info/exclude` (local-only ignore). Hard rule: they are never committed to this generic repo. |
 
 ## Repository structure
 
@@ -29,6 +29,7 @@ mcp/      # Curated client catalog (curated-tools.json, 20 read-only) + loader/v
 agent/    # Orchestrator: router L0/L1/L2, Zabbix read-only client, thin MCP client, CLI
 l2agent/  # Local L2 agent: decision loop, guardrails, audit JSONL, watch + notify (0 tokens)
 docs/     # Design docs; arquitectura.md is canonical, plus propuesta-bosquejo.md, arquitectura-resumen.md, auditoria-2026-09-10.md, runbook-operativo.md
+client/   # LOCAL LAB ONLY: per-client artifacts and mentions, organized per client (never committed)
 scripts/  # Lab probes (ceiling probe, model benchmarks)
 tests/    # Offline test suite (pytest; fakes, no network)
 odd/      # Task trackers (feature docs + backlog)
