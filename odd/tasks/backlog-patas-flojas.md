@@ -7,7 +7,7 @@
 
 ## A. Bugs de código
 
-- [ ] **P1 · `watch.sweep` no parsea la respuesta real del hub (crítico)** 🔴
+- [x] **P1 · `watch.sweep` no parsea la respuesta real del hub (crítico)** 🔴
   `l2agent/watch.py` itera el resultado de `call_tool` como lista de dicts,
   pero el hub devuelve el envelope MCP `{"content": [{"type": "text",
   "text": "<json>"}], "isError": ...}`: el barrido ve 0 problemas siempre —
@@ -17,6 +17,11 @@
   Fix: desempaquetar `content[0].text` y parsear el JSON interno (tolerante a
   lista o dict). Verificación: test RED con payload en forma real + barrido
   live contra el lab con ≥1 problema activo (debe ver NUEVO, no vacío).
+  Hecho (2026-11-06): `_problem_list` en `watch.py`. La forma real medida
+  tiene además guarda `[System: ...]` y payload `{"problems": [...]}`;
+  `isError` o forma desconocida fallan fuerte (nunca vacío silencioso).
+  4 tests RED→GREEN con esa forma; suite 80 passed; barrido live: NUEVO
+  `43151` y segundo barrido RECURRENTE sin re-alarma.
 
 - [ ] **P2 · Sin backoff/retry ante 429 en el modelo** 🟠
   `l2agent/model.py` corta con `raise_for_status`; el diseño del watch y la

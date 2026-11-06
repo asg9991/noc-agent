@@ -14,6 +14,7 @@ si hay novedad (barato primero, runbook §9). Conceptos:
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import time
 from pathlib import Path
@@ -53,16 +54,58 @@ def _db(path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def _problem_list(result: Any) -> list[dict[str, Any]]:
+    """Normaliza un tools/call a la lista de problemas.
+
+    Acepta la forma real del hub (envelope MCP: content[0].text con guarda
+    [System: ...] y payload {"problems": [...]} o lista) y la lista plana
+    de los fakes. Un error de tool o una forma irreconocida NO se tragan:
+    un barrido que no entendió la respuesta jamás declara "sin problemas"
+    (ese vacío silencioso era el bug P1 del backlog).
+    """
+    if isinstance(result, list):
+        return [p for p in result if isinstance(p, dict)]
+    if not isinstance(result, dict):
+        raise ValueError(f"resultado de tool inesperado: {type(result).__name__}")
+    if result.get("isError"):
+        raise RuntimeError(f"hub tool error: {str(result)[:200]}")
+    problems = result.get("problems")
+    if isinstance(problems, list):
+        return [p for p in problems if isinstance(p, dict)]
+    text = ""
+    for item in result.get("content") or []:
+        if isinstance(item, dict) and isinstance(item.get("text"), str):
+            text = item["text"]
+            break
+    if not text:
+        sc = result.get("structuredContent")
+        if isinstance(sc, dict) and isinstance(sc.get("result"), str):
+            text = sc["result"]
+    payload = text.strip()
+    if payload.startswith("[System:"):
+        _, _, payload = payload.partition("\n")
+    payload = payload.strip()
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"texto de tool no parsea JSON: {text[:120]!r}") from exc
+    if isinstance(data, list):
+        return [p for p in data if isinstance(p, dict)]
+    if isinstance(data, dict) and isinstance(data.get("problems"), list):
+        return [p for p in data["problems"] if isinstance(p, dict)]
+    raise ValueError(f"forma de payload no reconocida: {payload[:120]!r}")
+
+
 def sweep(client: SweepClient, db_path: str | Path,
           now: float | None = None) -> dict[str, Any]:
     """Un barrido: snapshot del hub, clasifica contra baseline, firma."""
     ts = time.time() if now is None else now
-    problems = client.call_tool("problem_active_get", {}) or []
+    problems = _problem_list(client.call_tool("problem_active_get", {}))
     current = {}
     for p in problems:
-        eid = str(p.get("eventid", "")) if isinstance(p, dict) else ""
+        eid = str(p.get("eventid", ""))
         if eid:
-            current[eid] = p if isinstance(p, dict) else {}
+            current[eid] = p
     new, recurrent, recovered = [], [], []
     conn = _db(db_path)
     try:
