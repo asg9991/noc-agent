@@ -228,3 +228,58 @@ def test_errores_no_429_no_se_reintentan():
         model.decide("¿hay alertas?", [])
     assert len(posts) == 1  # comportamiento previo: corta a la primera
     assert waits == []
+
+
+# --- P2b: pacing proactivo entre requests (default 0 = sin comportamiento nuevo)
+
+
+def _transport_ok(visto):
+    def handler(request):
+        visto.append(request)
+        return httpx.Response(200, json=_ok_body())
+    return httpx.MockTransport(handler)
+
+
+def test_pacing_espacio_entre_requests():
+    visto, waits = [], []
+    model = ChatModel(base_url="http://x/v1", model="lab-model",
+                      transport=_transport_ok(visto), sleep=waits.append,
+                      min_interval_s=2.0)
+    model.decide("una", [])
+    model.decide("dos", [])  # llega de inmediato: debe esperar la diferencia
+    assert len(visto) == 2
+    assert len(waits) == 1
+    assert 1.5 < waits[0] <= 2.0  # ~2s (el lapso real entre llamadas es mínimo)
+
+
+def test_pacing_no_espera_si_ya_paso_el_intervalo():
+    import time
+
+    visto, waits = [], []
+    model = ChatModel(base_url="http://x/v1", model="lab-model",
+                      transport=_transport_ok(visto), sleep=waits.append,
+                      min_interval_s=0.01)
+    model.decide("una", [])
+    time.sleep(0.05)  # lapso real > intervalo
+    model.decide("dos", [])
+    assert len(visto) == 2
+    assert waits == []  # nada que esperar
+
+
+def test_pacing_default_cero_no_cambia_comportamiento():
+    visto, waits = [], []
+    model = ChatModel(base_url="http://x/v1", model="lab-model",
+                      transport=_transport_ok(visto), sleep=waits.append)
+    model.decide("una", [])
+    model.decide("dos", [])
+    assert len(visto) == 2
+    assert waits == []  # sin intervalo, sin esperas: el contrato previo
+
+
+def test_pacing_se_configura_por_env(monkeypatch):
+    from l2agent.main import build_model_from_env
+
+    monkeypatch.setenv("LLM_MODEL", "lab-model")
+    monkeypatch.setenv("LLM_MIN_INTERVAL_S", "2")
+    model = build_model_from_env("operator")
+    assert model._min_interval_s == 2.0

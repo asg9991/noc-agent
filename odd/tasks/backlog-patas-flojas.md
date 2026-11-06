@@ -32,8 +32,17 @@
   reintentos; `retry-after` manda y sin header usa backoff creciente
   (2s→4s, tope 60s); espera inyectable para tests. 4 tests RED→GREEN
   (incluye el pin de que los errores no-429 NO se reintentan); suite
-  84 passed. Nota: la pausa *preventiva* entre vueltas queda cubierta por el
-  reintento; sin pacing proactivo configurable.
+  84 passed. Nota: la pausa *preventiva* entre vueltas quedó como P2b.
+
+- [x] **P2b · Pacing proactivo entre requests (default off)** 🟠
+  La otra mitad del pedido de diseño "pausa entre vueltas y reintento con
+  backoff": esperar un intervalo fijo entre requests para no disparar los
+  429 de raíz. Configurable por `LLM_MIN_INTERVAL_S` (ej. 2 para el free
+  tier, 0 para inferencia local); default 0 = sin comportamiento nuevo.
+  Hecho (2026-11-06): `min_interval_s` en `ChatModel` (espera inyectable;
+  espacia cada request, reintentos incluidos) + wiring `LLM_MIN_INTERVAL_S`.
+  4 tests RED→GREEN (espaciamiento, no-espera si ya pasó, default 0 intacto,
+  configuración por env); suite 88 passed.
 
 - [ ] **P3 · L1 no matchea su propio ejemplo documentado** 🟠
   `agent/router.py:classify_l1` no reconoce "¿cómo está el zabbix?" (la

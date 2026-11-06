@@ -7,7 +7,8 @@ Uso:
 Todo por env, nada en argv ni en imagen:
   MCP_URL (default: hub lab), MCP_BEARER o /tmp/.mcp_bearer (600),
   LLM_BASE_URL (default: Ollama local), LLM_MODEL (obligatorio para correr),
-  LLM_API_KEY (opcional, solo nube).
+  LLM_API_KEY (opcional, solo nube), LLM_MIN_INTERVAL_S (opcional: pacing
+  proactivo entre requests, ej. 2 para el free tier; default 0 = off).
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ def build_model_from_env(role: str) -> ChatModel:
         model=name,
         api_key=os.getenv("LLM_API_KEY", ""),
         role=role,
+        min_interval_s=float(os.getenv("LLM_MIN_INTERVAL_S", "0")),
     )
 
 

@@ -135,6 +135,7 @@ class ChatModel:
         max_tokens: int | None = None,  # None: 2048 nativas, 512 texto
         transport: httpx.BaseTransport | None = None,
         native_tools: bool | None = None,  # None: auto por familia
+        min_interval_s: float = 0.0,  # pacing proactivo entre requests (0: off)
         sleep: Callable[[float], None] = time.sleep,  # inyectable en tests
     ) -> None:
         self.url = base_url.rstrip("/") + "/chat/completions"
@@ -150,7 +151,17 @@ class ChatModel:
                            if max_tokens is None else max_tokens)
         self.usage_total = {"prompt_tokens": 0, "completion_tokens": 0}  # piloto
         self._transport = transport
+        self._min_interval_s = max(0.0, float(min_interval_s))
+        self._last_request_at: float | None = None
         self._sleep = sleep
+
+    def _pace(self) -> None:
+        """Pausa proactiva entre requests: nunca más rápido que `min_interval_s`."""
+        if self._min_interval_s <= 0 or self._last_request_at is None:
+            return
+        elapsed = time.monotonic() - self._last_request_at
+        if elapsed < self._min_interval_s:
+            self._sleep(self._min_interval_s - elapsed)
 
     def decide(self, goal: str, history: list[dict[str, Any]]) -> dict[str, Any]:
         user = goal
@@ -175,6 +186,8 @@ class ChatModel:
               else httpx.Client(timeout=self.timeout))
         with cm as http:
             for attempt in range(MAX_RETRIES + 1):
+                self._pace()
+                self._last_request_at = time.monotonic()
                 resp = http.post(self.url, json=body, headers=headers)
                 if resp.status_code != 429 or attempt == MAX_RETRIES:
                     break
