@@ -20,6 +20,8 @@ import time
 from pathlib import Path
 from typing import Any, Protocol
 
+from l2agent.errors import classify, result_for
+
 
 class SweepClient(Protocol):
     def call_tool(self, name: str, args: dict[str, Any] | None = ...) -> Any: ...
@@ -180,7 +182,7 @@ def is_alive(db_path: str | Path, max_age_s: float = 3600,
     return row[0] is not None and (ts - row[0]) <= max_age_s
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, client: SweepClient | None = None) -> int:
     """CLI para cron/systemd: barre, informa novedad, sale con código."""
     from agent.mcp_client import MCPClient  # import tardío: tests no lo piden
 
@@ -198,12 +200,24 @@ def main(argv: list[str] | None = None) -> int:
                         help="severidad mínima que alarma (default High)")
     args = parser.parse_args(argv)
     if args.check_alive:
-        print("vivo" if is_alive(args.db, args.max_age) else "MUERTO")
-        return 0 if is_alive(args.db, args.max_age) else 1
-    client = MCPClient()
+        vivo = is_alive(args.db, args.max_age)
+        print("vivo" if vivo else "MUERTO")
+        return 0 if vivo else 1
+    if client is None:
+        client = MCPClient()
     init = getattr(client, "initialize", None)
     if callable(init):
-        init()  # el hub exige handshake con sesión antes de tools/call
+        try:
+            init()  # el hub exige handshake con sesión antes de tools/call
+        except Exception as exc:
+            result = result_for(classify(exc))
+            if result == "error_auth":
+                print("corté con alarma: el hub rechazó la credencial en el "
+                      "handshake (401/403 o bearer inválido); rotá el token.")
+            else:
+                print(f"corté: no hay sesión con el hub ({result}): "
+                      f"{str(exc)[:200]}")
+            return 1
     r = sweep(client, args.db)
     print(f"nuevos={len(r['new'])} recurrentes={len(r['recurrent'])} "
           f"recuperados={len(r['recovered'])} activos={r['active_count']}")

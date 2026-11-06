@@ -133,3 +133,39 @@ def test_sweep_forma_desconocida_no_se_traga_en_silencio(tmp_path):
     payload = real_envelope('{"otra_cosa": "texto que no es lista"}')
     with pytest.raises(Exception):
         watch.sweep(FakeMCP(payload), db)
+
+
+def test_main_handshake_caido_no_revienta(tmp_path, capsys):
+    class Roto:
+        def initialize(self):
+            raise RuntimeError("hub caído")
+
+        def call_tool(self, name, args=None):
+            raise AssertionError("no debía llegar a tools/call")
+
+    rc = watch.main(["--db", str(tmp_path / "w.db")], client=Roto())
+    assert rc == 1
+    assert "corté" in capsys.readouterr().out
+
+
+def test_main_handshake_con_credencial_rota_alarma(tmp_path, capsys):
+    class Roto:
+        def initialize(self):
+            raise RuntimeError("401 Unauthorized")
+
+    rc = watch.main(["--db", str(tmp_path / "w.db")], client=Roto())
+    assert rc == 1
+    assert "alarma" in capsys.readouterr().out
+
+
+def test_check_alive_consulta_is_alive_una_sola_vez(monkeypatch, tmp_path):
+    calls = []
+    real = watch.is_alive
+
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(watch, "is_alive", counted)
+    assert watch.main(["--db", str(tmp_path / "w.db"), "--check-alive"]) == 1
+    assert len(calls) == 1  # una consulta, no dos
