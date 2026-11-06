@@ -1,6 +1,6 @@
 # NOC Agent — Runbook operativo (unificado)
 
-> Unifica diario cliente [11] (instalación + errores, `ses_fca675a56ffeKG6RYSfTZWvrrZ`)
+> Unifica bitácora [11] (instalación + errores, `ses_fca675a56ffeKG6RYSfTZWvrrZ`)
 > y [13] (HUB MCP ZBX + Discord) en la canónica [31].
 > Estado: lab. Solo lectura contra Zabbix (el CLI no escribe).
 
@@ -64,7 +64,7 @@ Pendiente operativo:
 
 - [x] Agregar `mcp/` client config curada (~15–25 tools, nunca catálogo completo) — desbloquea L2 real.
 - [ ] Doc de operación del hub + rotación de tokens (procedimiento 2026-10-11 en `odd/tasks/l2-local-agent.md` §Cierre: token vía UI, toml, restart, borrar viejo).
-- [ ] Clasificación `error_auth` en `l2agent`: distinguir credencial vencida de error transitorio + alarma (hoy todo error va a `result="error"` sin clasificar).
+- [x] Clasificación `error_auth` en `l2agent`: credencial vencida vs transitorio + alarma (`l2agent/errors.py`, T7/T8 del feature branch).
 - [x] Telemetría de piloto free: `usage_total` en `ChatModel` + `usage` en `respuesta_final` del audit (50 passed).
 - [ ] Mover hub a VM dedicada fuera del compose (decisión de arquitectura).
 - [ ] Revisar permisos y secretos según auditoría (toml con token, `.env` group-writable, token Telegram en historial) — rotar y corregir permisos, sin pegar valores acá.
@@ -73,31 +73,35 @@ Pendiente operativo:
 
 - Decisión de producto: adapters intercambiables sobre el mismo orquestador y
   vocabulario (`reply`, `menu`, `form`, `ephemeral`); cada instancia elige el suyo.
-  Instancia cliente (2026-10): mail-first (hilos por incidente); Discord/Telegram
-  fuera del plan inmediato. El adapter vive en `agent/` (Fase 4), hoy no existe.
+  Instancia de referencia (2026-10): mail-first (hilos por incidente);
+  Discord/Telegram fuera del plan inmediato. El adapter vive en `agent/`
+  (Fase 4), hoy no existe.
 - Vocabulario abstracto del orquestador (`reply`, `menu`, `form`, `ephemeral`) que cada canal chat traduce a nativos.
 - Telegram queda para después, reutilizando el mismo vocabulario y el mismo orquestador que Discord.
 - Agentes directos: técnicos de la coope con OpenCode / Claude Code / Codex van directo al hub MCP en `zbx-in-docker` (`127.0.0.1:8080` en lab, VM dedicada en prod), con bearer propio y rol `operator` / `technician` de `mcp/curated-tools.json`. No pasan por Discord ni crean hilos.
 
 ## 6. Gaps abiertos (para [31])
 
-1. `mcp/` client config + L2 real hechos (loop `l2agent` verificado en lab 2026-10-11; server initMAX 1.36.1, decisión Fase 2 del 2026-09-26).
-2. Adapter Discord ausente (Fase 4).
-3. Runbook de upgrade `instalacion.md` (en `zbx-in-docker/docs/`) parcial: 3 pasos sin backup/restore/verificación.
-4. Sin troubleshooting general, sin backups automáticos/offsite, sin rotación de secretos (los 3 faltantes de la auditoría).
+1. [x] `mcp/` client config + L2 real (loop `l2agent` verificado en lab
+   2026-10-11; server initMAX 1.36.1, decisión Fase 2 del 2026-09-26).
+2. [ ] Adapter de canal (mail primero) ausente (Fase 4).
+3. [ ] Runbook de upgrade `instalacion.md` (en `zbx-in-docker/docs/`) parcial: 3 pasos sin backup/restore/verificación.
+4. [ ] Sin troubleshooting general, sin backups automáticos/offsite, sin rotación de secretos (los 3 faltantes de la auditoría).
+5. [ ] Backlog de tareas abiertas del proyecto: `odd/tasks/backlog-patas-flojas.md`.
 
 ## 7. Referencias
 
 - Canónico: `docs/arquitectura.md` (§3–§4 hub + canales).
 - Auditoría: `docs/auditoria-2026-09-10.md`.
 - Diseño lab / upgrade parcial: `zbx-in-docker/docs/instalacion.md`.
-- Diario: cliente [31] canónica (sup [11] + [13]).
+- Bitácora: [31] canónica (sup [11] + [13]).
 
 ## 8. Mapa de triggers (qué despierta al agente)
 
-Estado 2026-10-11: solo CLI/`main.py` existen (terminal). Hilos, botones y
-adapters son arquitectura (Fase 4), no implementación. Esta tabla es el
-contrato a implementar; es lo que el técnico VE (la capa que vende).
+Estado 2026-11-06: CLI (`agent/`) y agente L2 (`l2agent/`, con watch +
+notify) existen. Hilos, botones y adapters son arquitectura (Fase 4), no
+implementación. Esta tabla es el contrato a implementar; es lo que el
+técnico VE (la capa que vende).
 
 | # | Lo dispara | Llega por | Atiende | Estado |
 |---|---|---|---|---|
@@ -106,7 +110,7 @@ contrato a implementar; es lo que el técnico VE (la capa que vende).
 | 3 | Guardia pregunta en el hilo | reply en el hilo (el historial es el contexto) | L2 | futuro (adapter Fase 4) |
 | 4 | Técnico profundiza solo | su agente → directo al hub | nadie (self-service) | hoy (token + rol propios + `docs/kit-tecnico.md`) |
 | 5 | Técnico pide criterio | mensaje al noc-agent vía adapter | L2 | futuro (adapter Fase 4) |
-| 6 | Watch programado | cron → `main.py` con goal fijo | L2 | futuro (memoria pendiente) |
+| 6 | Watch programado | cron/systemd → `l2agent/watch.py` | L0 (0 tokens) | parcial hoy: barrido + aviso (timer 15 min); falta redactado LLM (P22) |
 | 7 | Agente externo pide criterio | `pedir_criterio` como tool (agent-as-tool) | L2 | futuro (decisiones: quién paga tokens, contrato de escalamiento) |
 
 Reglas:
@@ -114,11 +118,12 @@ Reglas:
 - La ambigüedad en el agente PROPIO del técnico NO despierta al noc-agent:
   su agente es otro consumidor del hub; su loop (o su fallo) es suyo.
   Derivar criterio al noc-agent sería un handoff diseñado, no automático.
-- Cada fila necesita antes de cliente: transporte, auth y contrato de formato.
-- cliente es mail-first: hilo = thread de mail; botones = los que el mail
-  permita (links/keywords), no componentes Discord.
+- Cada fila necesita antes de desplegar: transporte, auth y contrato de
+  formato.
+- La instancia de referencia es mail-first: hilo = thread de mail; botones =
+  los que el mail permita (links/keywords), no componentes Discord.
 
-## 9. Watch proactivo: notas de diseño (futuro, fila 6 del mapa)
+## 9. Watch proactivo: notas de diseño (implementado en `l2agent/watch.py`, fila 6 del mapa)
 
 Idea (2026-10-11): cron barre, guarda en DB, compara, notifica solo novedad.
 
@@ -149,7 +154,8 @@ tres compuertas en orden:
    alta → recuperado → alta). La repetición queda en digest como "cooldown".
 
 Destino: outbox JSONL con asunto y cuerpo listos para mail (hilos del
-futuro adapter); cliente es mail-first. Cero tokens: plantillas, no LLM.
+futuro adapter); la instancia de referencia es mail-first. Cero tokens:
+plantillas, no LLM.
 CLI: `python -m l2agent.watch --db watch.db --notify [--min-severity High]`.
 Timer instalado 2026-10-12: `noc-agent-watch.timer` (systemd user, cada 15
 min, Persistent=true) → `noc-agent-watch.service` con DB/outbox en

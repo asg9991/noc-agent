@@ -2,7 +2,7 @@
 
 Objetivo: agente local L2 que cubra el stub de `router.handle_l2`, viviendo en un
 contenedor Docker. Ejecuta la decisión ya aprobada en `docs/arquitectura.md` §9
-(instancia cliente: L2 con LLM/agente local + mail).
+(instancia de referencia: L2 con LLM/agente local + mail).
 Problema: `handle_l2` devuelve "no implementado, usar MCP"; no hay loop agente,
 ni guardrails, ni auditoría de decisiones.
 Alcance autorizado: lab local, read-only primero (writes futuros con confirmación
@@ -54,16 +54,16 @@ Route: inline (delegación no disponible en este runtime) + piezas chicas ya ent
 
 - Doc creado. Branch: `feature/l2-local-agent` (creado desde main en sincro con origin).
 - Recovery commit `b102216` (2026-10-12): T1-T6 + sonda, `pytest -q` 50 passed.
-- T1 siguiente: leer estilo de `tests/test_router.py`, escribir test RED, implementar GREEN.
+- T1–T11 completos (2026-10-12): `pytest -q` 76 passed; watch + notify +
+  timer 15 min instalado y verificado. Branch lista para merge a `main`.
 
 ## Siguiente paso
 
-- Slice watch (diario #53): con estos números, el diseño debe incluir
-  backoff+retry ante 429 (usar header `retry-after`), prompts cortos
-  (disciplina de tokens estira el presupuesto diario) y heartbeat
-  (saltear el LLM si nada cambió). Decisión de proveedor pendiente (ver
-  matriz abajo): politically gratis con cadencia ≥15 min, paid (~u$d 2/mes),
-  o benchmark local.
+- Trabajar el backlog de patas flojas (`odd/tasks/backlog-patas-flojas.md`);
+  el punto más urgente es P1: `watch.sweep` no parsea el envelope real del
+  hub (el timer corre hoy sobre lógica que ve 0 problemas).
+- Decisión de proveedor/infraestructura de inferencia (cloud vs proyecto de
+  IA local) pendiente con el cliente.
 
 ## Evidencia #50: sonda de techo + kit §6 (2026-10-12, corregido)
 

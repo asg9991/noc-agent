@@ -69,7 +69,7 @@ Fórmula: `consultas/día × tokens/tarea × 30 × precio`. Volúmenes **[SUPUES
 |---|---|---|---|
 | Mes | ✅ sobra (27K≪200K/día) | ~u$d 1.00 | **~u$d 0.09** |
 
-**S2 — cliente real estimado: 30 consultas/día + watch triage cada 15 min** (≈200k tok/día, ~300 req/día):
+**S2 — Instancia real estimada: 30 consultas/día + watch triage cada 15 min** (≈200k tok/día, ~300 req/día):
 
 | | Free qwen | Pago qwen | Pago gpt-oss-20b |
 |---|---|---|---|
