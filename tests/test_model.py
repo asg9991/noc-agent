@@ -149,3 +149,82 @@ def test_override_explicito_apaga_tools_nativas():
     with pytest.raises(ValueError):  # texto plano no-JSON en modo texto
         model.decide("hola", [])
     assert "tools" not in visto[0]
+
+
+# --- P2: reintento ante 429 con retry-after (el free tier throttlea, no falla)
+
+
+def _ok_body():
+    return {"choices": [{"message": {"content":
+            '{"thought": "t", "action": null, "answer": "ok"}'}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+
+def test_429_con_retry_after_reintenta_y_resuelve():
+    posts, waits = [], []
+
+    def handler(request):
+        posts.append(request)
+        if len(posts) == 1:
+            return httpx.Response(429, headers={"retry-after": "1"},
+                                  json={"error": "rate limit"})
+        return httpx.Response(200, json=_ok_body())
+
+    model = ChatModel(base_url="http://x/v1", model="lab-model",
+                      transport=httpx.MockTransport(handler),
+                      sleep=waits.append)
+    step = model.decide("¿hay alertas?", [])
+    assert step["answer"] == "ok"
+    assert len(posts) == 2
+    assert waits == [1.0]  # esperó lo que dice el header
+
+
+def test_429_sin_header_usa_backoff_creciente():
+    posts, waits = [], []
+
+    def handler(request):
+        posts.append(request)
+        if len(posts) <= 2:
+            return httpx.Response(429, json={"error": "rate limit"})
+        return httpx.Response(200, json=_ok_body())
+
+    model = ChatModel(base_url="http://x/v1", model="lab-model",
+                      transport=httpx.MockTransport(handler),
+                      sleep=waits.append)
+    step = model.decide("¿hay alertas?", [])
+    assert step["answer"] == "ok"
+    assert len(posts) == 3
+    assert waits == [2.0, 4.0]  # backoff creciente sin header
+
+
+def test_429_agota_reintentos_y_revienta():
+    posts, waits = [], []
+
+    def handler(request):
+        posts.append(request)
+        return httpx.Response(429, headers={"retry-after": "1"},
+                              json={"error": "rate limit"})
+
+    model = ChatModel(base_url="http://x/v1", model="lab-model",
+                      transport=httpx.MockTransport(handler),
+                      sleep=waits.append)
+    with pytest.raises(httpx.HTTPStatusError):
+        model.decide("¿hay alertas?", [])
+    assert len(posts) == 3  # intento + 2 reintentos, y corta
+    assert waits == [1.0, 1.0]
+
+
+def test_errores_no_429_no_se_reintentan():
+    posts, waits = [], []
+
+    def handler(request):
+        posts.append(request)
+        return httpx.Response(500, json={"error": "boom"})
+
+    model = ChatModel(base_url="http://x/v1", model="lab-model",
+                      transport=httpx.MockTransport(handler),
+                      sleep=waits.append)
+    with pytest.raises(httpx.HTTPStatusError):
+        model.decide("¿hay alertas?", [])
+    assert len(posts) == 1  # comportamiento previo: corta a la primera
+    assert waits == []

@@ -23,11 +23,17 @@
   4 tests RED→GREEN con esa forma; suite 80 passed; barrido live: NUEVO
   `43151` y segundo barrido RECURRENTE sin re-alarma.
 
-- [ ] **P2 · Sin backoff/retry ante 429 en el modelo** 🟠
+- [x] **P2 · Sin backoff/retry ante 429 en el modelo** 🟠
   `l2agent/model.py` corta con `raise_for_status`; el diseño del watch y la
   comparativa de modelos piden explícito pausa entre vueltas y reintento con
   header `retry-after`. Verificación: test con transporte fake que responda
   429 + `retry-after: 1` y luego 200 (con espera simulada).
+  Hecho (2026-11-06): reintento acotado en `ChatModel.decide` — intento + 2
+  reintentos; `retry-after` manda y sin header usa backoff creciente
+  (2s→4s, tope 60s); espera inyectable para tests. 4 tests RED→GREEN
+  (incluye el pin de que los errores no-429 NO se reintentan); suite
+  84 passed. Nota: la pausa *preventiva* entre vueltas queda cubierta por el
+  reintento; sin pacing proactivo configurable.
 
 - [ ] **P3 · L1 no matchea su propio ejemplo documentado** 🟠
   `agent/router.py:classify_l1` no reconoce "¿cómo está el zabbix?" (la

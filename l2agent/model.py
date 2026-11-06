@@ -12,7 +12,8 @@ El modelo decide en JSON: {"thought": ..., "action": {"tool", "args"} | null,
 from __future__ import annotations
 
 import json
-from typing import Any
+import time
+from typing import Any, Callable
 
 import httpx
 
@@ -28,6 +29,21 @@ NATIVE_TOOL_MODELS = ("gpt-oss",)
 
 # Razonar consume cupo de completion: las nativas piden más techo.
 NATIVE_MAX_TOKENS = 2048
+
+# Reintento ante 429: el free tier throttlea, no falla (sonda #50 lo confirmó).
+# El header `retry-after` manda; sin él, backoff creciente y acotado.
+MAX_RETRIES = 2
+DEFAULT_BACKOFF_S = 2.0
+MAX_BACKOFF_S = 60.0
+
+
+def _backoff_s(resp: httpx.Response, attempt: int) -> float:
+    """Espera previa al reintento: `retry-after` si lo hay, si no backoff creciente."""
+    try:
+        wait = float(resp.headers.get("retry-after", ""))
+    except ValueError:
+        wait = DEFAULT_BACKOFF_S * (attempt + 1)
+    return max(0.0, min(wait, MAX_BACKOFF_S))
 
 
 def _menu(role: str) -> str:
@@ -119,6 +135,7 @@ class ChatModel:
         max_tokens: int | None = None,  # None: 2048 nativas, 512 texto
         transport: httpx.BaseTransport | None = None,
         native_tools: bool | None = None,  # None: auto por familia
+        sleep: Callable[[float], None] = time.sleep,  # inyectable en tests
     ) -> None:
         self.url = base_url.rstrip("/") + "/chat/completions"
         self.model = model
@@ -133,6 +150,7 @@ class ChatModel:
                            if max_tokens is None else max_tokens)
         self.usage_total = {"prompt_tokens": 0, "completion_tokens": 0}  # piloto
         self._transport = transport
+        self._sleep = sleep
 
     def decide(self, goal: str, history: list[dict[str, Any]]) -> dict[str, Any]:
         user = goal
@@ -153,12 +171,14 @@ class ChatModel:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        if self._transport is not None:
-            with httpx.Client(transport=self._transport) as http:
+        cm = (httpx.Client(transport=self._transport) if self._transport is not None
+              else httpx.Client(timeout=self.timeout))
+        with cm as http:
+            for attempt in range(MAX_RETRIES + 1):
                 resp = http.post(self.url, json=body, headers=headers)
-        else:
-            with httpx.Client(timeout=self.timeout) as http:
-                resp = http.post(self.url, json=body, headers=headers)
+                if resp.status_code != 429 or attempt == MAX_RETRIES:
+                    break
+                self._sleep(_backoff_s(resp, attempt))
         resp.raise_for_status()
         data = resp.json()
         usage = data.get("usage") or {}
