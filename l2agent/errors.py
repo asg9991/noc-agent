@@ -16,6 +16,8 @@ Pura y sin red: entra excepción o texto, sale un string. Testeable con fakes.
 
 from __future__ import annotations
 
+import re
+
 AUTH = "auth"
 TRANSIENT = "transient"
 UNKNOWN = "unknown"
@@ -30,29 +32,25 @@ AUTH_HINTS = (
     "auth failed",
     "access denied",
     "forbidden",
-    "401",
-    "403",
 )
 
 TRANSIENT_HINTS = (
     "timed out",
     "timeout",
     "connection",
-    "connect",
     "temporary",
     "temporarily",
     "unavailable",
     "too many requests",
-    "429",
-    "500",
-    "502",
-    "503",
-    "504",
     "network",
     "dns",
     "reset by peer",
     "broken pipe",
 )
+
+# Códigos como TOKEN completo: "build 4014" no es un 401 ni "5000" un 500.
+_AUTH_CODE_RE = re.compile(r"\b(?:401|403)\b")
+_TRANSIENT_CODE_RE = re.compile(r"\b(?:429|50[0234])\b")
 
 
 def classify(exc: BaseException | str) -> str:
@@ -64,9 +62,10 @@ def classify(exc: BaseException | str) -> str:
         return TRANSIENT
     text = exc if isinstance(exc, str) else f"{type(exc).__name__}: {exc}"
     lowered = text.lower()
-    if any(h in lowered for h in AUTH_HINTS):
+    if _AUTH_CODE_RE.search(lowered) or any(h in lowered for h in AUTH_HINTS):
         return AUTH
-    if any(h in lowered for h in TRANSIENT_HINTS):
+    if (_TRANSIENT_CODE_RE.search(lowered)
+            or any(h in lowered for h in TRANSIENT_HINTS)):
         return TRANSIENT
     return UNKNOWN
 

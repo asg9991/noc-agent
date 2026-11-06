@@ -55,6 +55,13 @@ def test_generico_sigue_unknown():
     assert errors.classify(RuntimeError("hub caído")) == "unknown"
 
 
+def test_codigos_son_tokens_completos_no_subcadenas():
+    # "build 4014" no es 401; "5000 items" no es 500; "disconnect" no es conexión.
+    assert errors.classify(RuntimeError("build 4014 falla")) == "unknown"
+    assert errors.classify(RuntimeError("5000 items en la cola")) == "unknown"
+    assert errors.classify(RuntimeError("peer disconnect inesperado")) == "unknown"
+
+
 def test_loop_marca_error_auth_en_audit_y_observacion(tmp_path):
     log = tmp_path / "audit.jsonl"
     model = FakeModel(
