@@ -162,3 +162,48 @@ min, Persistent=true) → `noc-agent-watch.service` con DB/outbox en
 `~/.local/share/noc-agent-watch/`, env de `.env` del repo. Primer disparo
 verificado SUCCESS. Pendiente: redactado LLM solo sobre novedad
 confirmada + transporte mail (adapter Fase 4).
+
+## 10. Retención y rotación de datos del cliente (P9)
+
+Los tres artefactos con datos del cliente en claro tienen vida acotada
+(era deuda desde la auditoría 2026-09-10: crecían sin política). Implementado
+en `l2agent/retention.py`; la política por defecto:
+
+| Artefacto | Contenido | Retención | Rotación |
+|---|---|---|---|
+| `audit.jsonl` | decisiones del agente | 90 días | al superar 5 MiB → `audit.jsonl.<UTC>` (se conservan 5) |
+| `outbox.jsonl` | transporte de alarmas | 30 días | — |
+| `outbox.jsonl.cooldown.json` | último aviso por evento | 30 días | — |
+| `watch.db` (`sweeps`) | heartbeat por barrido | 90 días | — |
+| `watch.db` (`observations`) | baseline por evento | 90 días, solo `inactive` | — |
+
+**Regla dura**: una observación `active` jamás se borra. La baseline define
+la taxonomía NUEVO/RECURRENTE; borrar una fila activa re-alaría un problema
+vivo como si fuera nuevo. Líneas sin `ts` parseable se conservan (borrar lo
+que no se entiende perdería auditoría).
+
+### Procedimiento (de punta a punta)
+
+```bash
+python -m l2agent.retention                # usa los defaults de la tabla
+python -m l2agent.retention --days 180     # ventanas a medida
+```
+
+Imprime un reporte JSON con lo conservado/podado/rotado por artefacto;
+revísalo o guardalo como evidencia del mantenimiento.
+
+Con systemd user (junto al `noc-agent-watch.timer` existente), ejemplo de
+timer semanal `noc-agent-retention.timer`:
+
+```ini
+[Timer]
+OnCalendar=Sun *-*-* 06:00:00
+Persistent=true
+```
+
+apuntando a un `noc-agent-retention.service` que ejecute el comando con el
+mismo `WorkingDirectory`/env del watch (los paths por defecto son relativos).
+
+Backup offsite de `audit.jsonl` y `watch.db`: P14 del backlog (integrar al
+esquema de backups de ops). Hasta entonces, la retención acota la pérdida
+potencial a la ventana configurada.
