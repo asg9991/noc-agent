@@ -39,8 +39,11 @@ DEFAULT_DB_DAYS = 90.0
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 DEFAULT_KEEP_ROTATED = 5
 
-# Nombres emitidos por la rotación: audit.jsonl.<UTC stamp>[-N]
-_ROTATED_RE = re.compile(r"^audit\.jsonl\.\d{8}T\d{6}Z(?:-\d+)?$")
+# Nombres emitidos por la rotación: <basename>.<UTC stamp>[-N]. El patrón
+# se deriva del nombre del log para que un --audit con nombre custom también
+# gestione sus rotados (blocker S5h de la verificación de P9).
+def _rotated_re(name: str) -> re.Pattern[str]:
+    return re.compile(re.escape(name) + r"\.\d{8}T\d{6}Z(?:-\d+)?$")
 
 
 def _cutoff(now: float, max_age_days: float) -> float:
@@ -85,7 +88,8 @@ def _prune_jsonl(path: Path, cutoff: float,
             continue
         kept += 1
         out.append(raw)
-    path.write_text("".join(line + "\n" for line in out), encoding="utf-8")
+    if dropped:
+        path.write_text("".join(line + "\n" for line in out), encoding="utf-8")
     return kept, dropped
 
 
@@ -98,12 +102,13 @@ def prune_audit(path: str | Path, *,
     ts_now = time.time() if now is None else now
     cutoff = _cutoff(ts_now, max_age_days)
     p = Path(path)
+    rotated_re = _rotated_re(p.name)
     kept = dropped = files_removed = 0
 
     files = [p] if p.exists() else []
     if p.parent.exists():
         files += sorted(f for f in p.parent.iterdir()
-                        if _ROTATED_RE.match(f.name))
+                        if rotated_re.match(f.name))
     for f in files:
         k, d = _prune_jsonl(f, cutoff, _audit_ts)
         kept += k
@@ -126,8 +131,13 @@ def prune_audit(path: str | Path, *,
 
     if p.parent.exists():
         rotated = sorted(f for f in p.parent.iterdir()
-                         if _ROTATED_RE.match(f.name))
+                         if rotated_re.match(f.name))
         for f in rotated[:max(0, len(rotated) - keep_rotated)]:
+            # las líneas de un archivo removido por el tope dejan de estar
+            # conservadas: el reporte debe reconciliar con el estado final
+            lines = len(f.read_text(encoding="utf-8").splitlines())
+            kept -= lines
+            dropped += lines
             f.unlink()
             files_removed += 1
 
@@ -207,6 +217,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--now", type=float, default=None,
                         help="epoch de referencia (tests o cron determinista)")
     args = parser.parse_args(argv)
+    for flag, val in (("--days", args.days), ("--outbox-days", args.outbox_days),
+                      ("--db-days", args.db_days), ("--max-bytes", args.max_bytes),
+                      ("--keep", args.keep)):
+        if val < 0:
+            parser.error(f"{flag} no puede ser negativo")
     report = {
         "audit": prune_audit(args.audit, max_age_days=args.days,
                              max_bytes=args.max_bytes,

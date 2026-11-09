@@ -176,3 +176,147 @@ def test_main_de_punta_a_punta(tmp_path, capsys):
     assert report["outbox"]["dropped"] == 1
     assert report["db"]["sweeps_dropped"] == 1
     assert len(log.read_text(encoding="utf-8").splitlines()) == 1
+
+
+# --- Probes de regresión (verificación independiente de P9, commit 021f5fd) ---
+
+
+def test_corte_estricto_observaciones_y_activas_jamas(tmp_path):
+    """R1/S2 · req1+req3: ts==cutoff se conserva (estricto <); active jamás se borra."""
+    cut = NOW - 90 * DAY
+    db = tmp_path / "watch.db"
+    conn = sqlite3.connect(db)
+    conn.executescript(watch.SCHEMA)
+    for eid, status, ls in [("acut", "active", cut), ("icut", "inactive", cut),
+                            ("icut1", "inactive", cut - 1),
+                            ("a400", "active", NOW - 400 * DAY),
+                            ("aepoch", "active", 0.0)]:
+        conn.execute("INSERT INTO observations (eventid, host, severity, first_seen,"
+                     " last_seen, status) VALUES (?, 'h', 'High', ?, ?, ?)",
+                     (eid, ls, ls, status))
+    conn.commit()
+    conn.close()
+    r = retention.prune_db(db, max_age_days=90, now=NOW)
+    conn = sqlite3.connect(db)
+    left = {row[0] for row in conn.execute("SELECT eventid FROM observations")}
+    conn.close()
+    assert r == {"sweeps_dropped": 0, "observations_dropped": 1}
+    assert left == {"acut", "icut", "a400", "aepoch"}
+
+
+def test_regla_dura_payoff_no_realarma_como_nuevo(tmp_path):
+    """S6a · req3: la fila active de 400d sobrevive y evita el re-alarma NUEVO."""
+    class Fake:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def call_tool(self, name, args=None):
+            return self.payload
+
+    p = {"eventid": "e1", "host": "h1", "severity": "High"}
+    db = tmp_path / "watch.db"
+    watch.sweep(Fake([p]), db, now=NOW - 400 * DAY)
+    r = retention.prune_db(db, max_age_days=90, now=NOW)
+    assert r["observations_dropped"] == 0
+    r1 = watch.sweep(Fake([p]), db, now=NOW)
+    assert r1["new"] == [] and [x["eventid"] for x in r1["recurrent"]] == ["e1"]
+
+
+def test_rotados_de_log_con_nombre_custom_se_gestionan(tmp_path):
+    """S5h · req2: --audit con otro nombre aplica edad y tope también a sus rotados."""
+    log = tmp_path / "custom.jsonl"
+    log.write_text(_audit_line(_iso(NOW)) + "\n", encoding="utf-8")
+    (tmp_path / "custom.jsonl.20260101T000000Z").write_text(
+        _audit_line(_iso(NOW - 200 * DAY)) + "\n", encoding="utf-8")
+    (tmp_path / "custom.jsonl.20260102T000000Z").write_text(
+        _audit_line(_iso(NOW)) + "\n", encoding="utf-8")
+    retention.prune_audit(log, max_age_days=90, max_bytes=10, keep_rotated=1,
+                          now=NOW)
+    en_disco = "".join(p.read_text(encoding="utf-8")
+                       for p in tmp_path.glob("custom.jsonl*"))
+    rotados = [p for p in tmp_path.glob("custom.jsonl.*")]
+    assert _iso(NOW - 200 * DAY) not in en_disco, \
+        "la línea vencida del rotado debe podarse"
+    assert len(rotados) <= 1, \
+        "el tope --keep debe aplicar también al log con nombre custom"
+
+
+def test_reporte_lo_conservado_igual_a_lo_que_queda_tras_desborde(tmp_path):
+    """S3b/R5 · req6: tras desborde del tope el reporte reconcilia con el final."""
+    for i in range(3):
+        (tmp_path / f"audit.jsonl.2026010{i + 1}T000000Z").write_text(
+            _audit_line(_iso(NOW)) + "\n", encoding="utf-8")
+    log = tmp_path / "audit.jsonl"
+    log.write_text(_audit_line(_iso(NOW)) + "\n", encoding="utf-8")
+    before = sum(len(p.read_text(encoding="utf-8").splitlines())
+                 for p in tmp_path.glob("audit.jsonl*"))
+    r = retention.prune_audit(log, max_age_days=90, max_bytes=10,
+                              keep_rotated=2, now=NOW)
+    after = sum(len(p.read_text(encoding="utf-8").splitlines())
+                for p in tmp_path.glob("audit.jsonl*"))
+    assert r["kept"] + r["dropped"] == before
+    assert r["kept"] == after, "lo conservado debe ser lo que queda en disco"
+
+
+def test_lineas_con_ts_irrecuperable_se_conservan(tmp_path):
+    """S1 · req4: basura, ts null, sin ts, ts numérico e ISO no se borran."""
+    log = tmp_path / "audit.jsonl"
+    log.write_text("esto no es json\n"
+                   + json.dumps({"ts": None, "action": "a"}) + "\n"
+                   + json.dumps({"action": "b"}) + "\n"
+                   + json.dumps({"ts": 12345, "action": "c"}) + "\n"
+                   + _audit_line(_iso(NOW - 200 * DAY)) + "\n", encoding="utf-8")
+    r = retention.prune_audit(log, max_age_days=90, now=NOW)
+    txt = log.read_text(encoding="utf-8")
+    assert r == {"kept": 4, "dropped": 1, "rotated": None, "files_removed": 0}
+    assert all(t in txt for t in ("esto no es json", '"a"', '"b"', '"c"'))
+    out = tmp_path / "outbox.jsonl"
+    out.write_text(json.dumps({"ts": _iso(NOW - 200 * DAY),
+                               "eventid": "iso"}) + "\n" + "basura\n",
+                   encoding="utf-8")
+    r2 = retention.prune_outbox(out, max_age_days=30, now=NOW)
+    assert r2["kept"] == 2 and r2["dropped"] == 0
+
+
+def test_cooldown_podado_vuelve_a_alarma_y_fresco_calla(tmp_path):
+    """R2 · interacción: podar el cooldown libera el aviso; el fresco sigue callando."""
+    from l2agent import notify
+    out = tmp_path / "outbox.jsonl"
+    out.write_text("", encoding="utf-8")
+    (tmp_path / "outbox.jsonl.cooldown.json").write_text(
+        json.dumps({"viejo": NOW - 200 * DAY, "reciente": NOW - 0.5 * DAY}),
+        encoding="utf-8")
+    r = retention.prune_outbox(out, max_age_days=30, now=NOW)
+    assert r["cooldown_dropped"] == 1
+    dec = notify.decide(
+        {"new": [{"eventid": "viejo", "host": "h", "severity": "High"},
+                 {"eventid": "reciente", "host": "h", "severity": "High"}]},
+        outbox_path=out, now=NOW)
+    assert [a["eventid"] for a in dec["alarms"]] == ["viejo"]
+    assert [p["kind"] for p in dec["digest"]] == ["cooldown"]
+
+
+def test_archivos_ausentes_y_no_op_no_escriben_nada(tmp_path):
+    """S4a/S4b · invariantes: sin archivos nada se crea; sin expirados nada cambia."""
+    import hashlib
+    rc = retention.main(["--audit", str(tmp_path / "no.jsonl"),
+                         "--outbox", str(tmp_path / "no-out.jsonl"),
+                         "--db", str(tmp_path / "no.db"), "--now", str(NOW)])
+    assert rc == 0 and list(tmp_path.iterdir()) == []
+    log = tmp_path / "audit.jsonl"
+    log.write_text(_audit_line(_iso(NOW)) + "\n", encoding="utf-8")
+    h = hashlib.sha256(log.read_bytes()).hexdigest()
+    r2 = retention.prune_audit(log, max_age_days=90, now=NOW)
+    assert r2["dropped"] == 0
+    assert hashlib.sha256(log.read_bytes()).hexdigest() == h
+
+
+def test_main_rechaza_valores_negativos(tmp_path, capsys):
+    """Advisory S7: --days negativo no puede barrer la historia completa."""
+    import pytest
+    log = tmp_path / "audit.jsonl"
+    log.write_text(_audit_line(_iso(NOW)) + "\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        retention.main(["--audit", str(log), "--days", "-1",
+                        "--now", str(NOW)])
+    assert len(log.read_text(encoding="utf-8").splitlines()) == 1
