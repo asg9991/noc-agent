@@ -98,11 +98,22 @@
   `git check-ignore` los cubre a los 3 (audit, outbox y cooldown) y
   `git status` queda limpio.
 
-- [ ] **P9 · Sin retención ni rotación de audit y watch DB** 🔴
+- [x] **P9 · Sin retención ni rotación de audit y watch DB** 🔴
   El JSONL de auditoría y la SQLite del watch (datos del cliente en claro)
   crecen sin política de vida ni backup offsite (ya marcado en la auditoría
   2026-09-10). Definir retención (días/tamaño), rotación y backup; documentar
   en el runbook. Verificación: procedimiento ejecutado de punta a punta.
+  Hecho (2026-11-09): `l2agent/retention.py` + CLI `python -m
+  l2agent.retention` (commits 021f5fd + f3528cd). Política: audit 90d con
+  rotación 5 MiB/5 rotados, outbox+cooldown 30d, watch.db sweeps 90d e
+  `observations` solo `inactive` — regla dura: una fila `active` jamás se
+  borra (probado: tras retención el problema vivo sigue siendo RECURRENTE,
+  no NUEVO). Líneas sin `ts` parseable se conservan. Runbook §10 con
+  procedimiento y cron. Verificación independiente (17 tests + 113 suite):
+  2 blockers corregidos en f3528cd (regex de rotados hardcodeada a
+  `audit.jsonl`; `kept` no reconciliaba tras el tope) + 2 advisories (no-op
+  byte-estable, rechazo de negativos). E2E del procedimiento ejecutado.
+  Backup offsite + restore queda en P14.
 
 - [ ] **P10 · Identidad difusa en la auditoría** 🟠
   `actor` queda fijo en `"l2"` y el hub se habla con un bearer compartido.
