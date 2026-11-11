@@ -135,6 +135,10 @@
   decisión de routing se registra → informe mensual de distribución por
   nivel" (insumo de costos para el cliente). Agregar log por nivel y un
   reporte agregable. Verificación: una corrida por nivel deja traza.
+  Incorporado (2026-11-09): default de `actor` por identidad del kernel
+  (`pwd.getpwuid(os.getuid())`) en vez de `$USER` spoofeable — la cadena
+  `--actor` → `NOC_ACTOR` → `$USER` → `"cli"` es auto-declarada; el único
+  nivel con valor de autenticación es el dueño real del proceso.
 
 - [ ] **P12 · Secretos y permisos pendientes de rotar** 🟠
   Según `docs/auditoria-2026-09-10.md`: toml del hub con token en 644, `.env`
@@ -193,6 +197,10 @@
   `notify.py` deja mensajes "mail-ready" en un JSONL sin transporte. La
   instancia de referencia es mail-first: implementar el adapter (hilos por
   incidente) sobre el vocabulario abstracto del orquestador.
+  Criterio de aceptación (2026-11-09): la identidad del audit proviene del
+  usuario AUTENTICADO del canal (mapa usuario de canal → actor), nunca del
+  contenido del mensaje — un actor auto-declarado en el payload no es
+  identidad.
 
 - [ ] **P22 · Redactado LLM sobre novedad confirmada** 🟡
   Pendiente del runbook §9b: el LLM redacta resúmenes solo cuando las
@@ -207,3 +215,13 @@
   Runbooks, incidentes históricos y contexto para "conocer el NOC"
   (arquitectura §9): definir tras Fase 4, alineado con el proyecto de IA
   local (dónde vive la memoria, quién la consulta).
+
+- [ ] **P25 · Integridad y tamper-evidence del audit** 🟠
+  `audit.jsonl` es un archivo plano: "append-only" es convención, no
+  mecanismo — cualquiera con write sobre el archivo reescribe historia y el
+  backup (P14) conservaría hasta la versión falsificada. Mitigar con
+  permisos estrictos (usuario dedicado/600) y un mecanismo anti-manipulación
+  (hash-chain ligera o sink externo append-only). Urgencia real al abrir
+  Fase 4: un actor falsificado no debería poder ordenar writes con evidencia
+  imposible de auditar. Verificación: intento de modificación de una línea
+  pasada es detectable.
