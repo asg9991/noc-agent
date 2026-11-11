@@ -115,11 +115,20 @@
   byte-estable, rechazo de negativos). E2E del procedimiento ejecutado.
   Backup offsite + restore queda en P14.
 
-- [ ] **P10 · Identidad difusa en la auditoría** 🟠
+- [x] **P10 · Identidad difusa en la auditoría** 🟠
   `actor` queda fijo en `"l2"` y el hub se habla con un bearer compartido.
   El objetivo de la arquitectura §7 es identidad por usuario/consumidor.
   Propagar actor real hasta `run_loop` y un token por consumidor.
   Verificación: registro de audit con actor distinto por origen.
+  Hecho (2026-11-09): `actor`/`channel` se propagan desde cada origen hasta
+  `run_loop` — CLI `l2agent.main` (`--actor`, fallback `NOC_ACTOR` →
+  `$USER`) y `route()`/`handle_l2` (`actor=`, `channel=` para los adapters
+  de Fase 4). Test de aceptación: misma pregunta vía CLI (`actor=juan`) y
+  vía router (`actor=ana`, `channel=mail`) deja actores distintos en el
+  mismo audit. 5 tests nuevos (118 suite). Identidad documentada en runbook
+  §4 ("Identidad por consumidor"): token por consumidor = `MCP_BEARER`
+  propio por proceso (el hub ya cura tools por token/rol); el alta/baja/
+  rotación de tokens queda en P17.
 
 - [ ] **P11 · Las decisiones de routing L0/L1 no se auditan** 🟠
   `agent/router.py` no registra nada; la arquitectura §5 promete "cada

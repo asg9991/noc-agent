@@ -69,6 +69,24 @@ Pendiente operativo:
 - [ ] Mover hub a VM dedicada fuera del compose (decisión de arquitectura).
 - [ ] Revisar permisos y secretos según auditoría (toml con token, `.env` group-writable, token Telegram en historial) — rotar y corregir permisos, sin pegar valores acá.
 
+### Identidad por consumidor (P10)
+
+Dos identidades conviven y no se mezclan (arquitectura §7):
+
+- **Identidad de infraestructura**: el hub habla por token — un bearer por
+  consumidor (CLI L2, router/adapters, agentes de técnicos). Cada proceso
+  lleva su `MCP_BEARER` propio; el hub cura tools por token (rol
+  `operator`/`technician`) y ve quién consulta.
+- **Identidad de aplicación**: cada registro de audit lleva `actor` (quién
+  preguntó: usuario de canal o técnico) y `channel` (desde dónde: lab, mail,
+  discord). Se propagan hasta `run_loop` desde cada origen: CLI
+  (`--actor` / `NOC_ACTOR` / `$USER`) y `route()`/`handle_l2`
+  (`actor=`, `channel=` — los adapters de Fase 4 pasarán el ID de usuario
+  de canal).
+
+Alta/baja/rotación de tokens del hub: P17 del backlog (el procedimiento
+temporal vive en `odd/tasks/l2-local-agent.md` §Cierre).
+
 ## 5. Adapters: mail, Discord, Telegram y agentes directos (thread [13])
 
 - Decisión de producto: adapters intercambiables sobre el mismo orquestador y

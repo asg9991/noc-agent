@@ -59,11 +59,15 @@ def handle_l2(
     role: str = "operator",
     audit_path: str = "audit.jsonl",
     on_denied: DeniedHook = None,
+    actor: str = "l2",
+    channel: str = "lab",
 ) -> str:
     """L2 real: el objetivo corre por el loop con el catálogo curado.
 
     Sin inyección (producción/CLI): modelo y cliente salen del env. Sin
     LLM_MODEL no se rompe: avisa qué falta. En tests se inyectan fakes.
+    `actor`/`channel` son la identidad real del origen (arquitectura §7):
+    llegan hasta run_loop y quedan en cada registro de audit.
     """
     try:
         the_model = model if model is not None else build_model_from_env(role)
@@ -72,6 +76,7 @@ def handle_l2(
         return L2_NO_MODEL
     return run_loop(
         text, model=the_model, client=the_client,
+        actor=actor, channel=channel,
         audit_path=audit_path, on_denied=on_denied,
     )
 
@@ -121,12 +126,17 @@ def classify_l1(text: str) -> Handler | None:
     return None
 
 
-def route(text: str, client: ZabbixReader) -> tuple[str, str]:
-    """Devuelve (nivel, respuesta). Niveles: L0 | L1 | L2."""
+def route(text: str, client: ZabbixReader,
+          actor: str = "l2", channel: str = "lab") -> tuple[str, str]:
+    """Devuelve (nivel, respuesta). Niveles: L0 | L1 | L2.
+
+    `actor`/`channel` identifican al origen real (usuario de canal) y se
+    propagan al audit cuando la interacción llega a L2.
+    """
     handler = route_l0(text)
     if handler is not None:
         return ("L0", handler(client))
     handler = classify_l1(text)
     if handler is not None:
         return ("L1", handler(client))
-    return ("L2", handle_l2(text))
+    return ("L2", handle_l2(text, actor=actor, channel=channel))

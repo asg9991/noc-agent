@@ -96,3 +96,77 @@ def test_l1_no_matchea_subcadenas_de_palabras():
     assert classify_l1("se hizo el backup nocturno") is None
     assert classify_l1("¿cuándo se instaló la estación?") is None
     assert classify_l1("la estadística del mes") is None
+
+
+def test_handle_l2_propaga_actor_y_canal_al_audit(tmp_path):
+    """P10: la identidad real llega hasta run_loop y queda en cada registro."""
+    import json
+    model = FakeModel(
+        [{"thought": "ok", "answer": "listo."}]
+    )
+    fake = FakeMCP(payload=[])
+    log = tmp_path / "audit.jsonl"
+    handle_l2("pregunta", model=model, client=fake, audit_path=log,
+              actor="ana", channel="mail")
+    lineas = [json.loads(x) for x in
+              log.read_text(encoding="utf-8").splitlines()]
+    assert lineas and all(l["actor"] == "ana" for l in lineas)
+    assert all(l["channel"] == "mail" for l in lineas)
+
+
+def test_route_lleva_actor_y_canal_al_l2(monkeypatch):
+    visto = {}
+
+    def fake_handle_l2(text, **kw):
+        visto.update(kw)
+        return "ok"
+
+    monkeypatch.setattr("agent.router.handle_l2", fake_handle_l2)
+    nivel, _ = route("explica la causa raiz de todo", FakeClient(),
+                     actor="ana", channel="mail")
+    assert nivel == "L2"
+    assert visto["actor"] == "ana" and visto["channel"] == "mail"
+
+
+def test_cli_estampa_actor_real_en_audit(tmp_path):
+    """P10: el origen CLI ya no escribe actor fijo "l2"."""
+    import json
+    from l2agent.main import main as l2_cli_main
+    model = FakeModel([{"thought": "ok", "answer": "listo."}])
+    fake = FakeMCP(payload=[])
+    log = tmp_path / "audit.jsonl"
+    rc = l2_cli_main(["pregunta", "--actor", "juan", "--audit", str(log)],
+                     client=fake, model=model)
+    assert rc == 0
+    lineas = [json.loads(x) for x in
+              log.read_text(encoding="utf-8").splitlines()]
+    assert lineas and all(l["actor"] == "juan" for l in lineas)
+
+
+def test_cli_actor_por_env_noc_actor(tmp_path, monkeypatch):
+    import json
+    from l2agent.main import main as l2_cli_main
+    monkeypatch.setenv("NOC_ACTOR", "guardia-noche")
+    model = FakeModel([{"thought": "ok", "answer": "listo."}])
+    fake = FakeMCP(payload=[])
+    log = tmp_path / "audit.jsonl"
+    l2_cli_main(["pregunta", "--audit", str(log)], client=fake, model=model)
+    lineas = [json.loads(x) for x in
+              log.read_text(encoding="utf-8").splitlines()]
+    assert lineas and all(l["actor"] == "guardia-noche" for l in lineas)
+
+
+def test_origenes_distintos_dejan_actor_distinto(tmp_path):
+    """P10 (criterio de verificación): misma pregunta, dos orígenes, dos actores."""
+    import json
+    from l2agent.main import main as l2_cli_main
+    log = tmp_path / "audit.jsonl"
+    model = FakeModel([{"thought": "ok", "answer": "listo."}])
+    l2_cli_main(["pregunta", "--actor", "juan", "--audit", str(log)],
+                client=FakeMCP(payload=[]), model=model)
+    handle_l2("pregunta", model=FakeModel([{"thought": "ok", "answer": "sí."}]),
+              client=FakeMCP(payload=[]), audit_path=log,
+              actor="ana", channel="mail")
+    actores = {json.loads(x)["actor"] for x in
+               log.read_text(encoding="utf-8").splitlines()}
+    assert actores == {"juan", "ana"}
