@@ -22,29 +22,33 @@ class FakeClient:
         return [{"hostid": "1", "host": "lab-host", "name": "lab-host", "status": "0"}]
 
 
-def test_l0_exact_estado():
-    level, text = route("estado", FakeClient())
+def test_l0_exact_estado(tmp_path):
+    level, text = route("estado", FakeClient(),
+                        audit_path=tmp_path / "audit.jsonl")
     assert level == "L0"
     assert "7.4.13" in text
 
 
-def test_l0_exact_ack():
-    level, text = route("ack", FakeClient())
+def test_l0_exact_ack(tmp_path):
+    level, text = route("ack", FakeClient(),
+                        audit_path=tmp_path / "audit.jsonl")
     assert level == "L0"
     assert "CPU alta" in text
 
 
-def test_l1_keyword_routes_to_l0_handler():
+def test_l1_keyword_routes_to_l0_handler(tmp_path):
     assert route_l0("hay alertas nuevas?") is None  # no es comando exacto
     assert classify_l1("hay alertas nuevas?") is not None
-    level, text = route("hay alertas nuevas?", FakeClient())
+    level, text = route("hay alertas nuevas?", FakeClient(),
+                        audit_path=tmp_path / "audit.jsonl")
     assert level == "L1"
     assert "CPU alta" in text
 
 
-def test_l2_sin_modelo_avisa_en_vez_de_romper(monkeypatch):
+def test_l2_sin_modelo_avisa_en_vez_de_romper(monkeypatch, tmp_path):
     monkeypatch.delenv("LLM_MODEL", raising=False)
-    level, text = route("correlaciona la causa raiz con runbooks", FakeClient())
+    level, text = route("correlaciona la causa raiz con runbooks", FakeClient(),
+                        audit_path=tmp_path / "audit.jsonl")
     assert level == "L2"
     assert text == L2_NO_MODEL
 
@@ -170,3 +174,56 @@ def test_origenes_distintos_dejan_actor_distinto(tmp_path):
     actores = {json.loads(x)["actor"] for x in
                log.read_text(encoding="utf-8").splitlines()}
     assert actores == {"juan", "ana"}
+
+
+def _route_records(log):
+    import json
+    return [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()
+            if json.loads(x).get("action") == "route"]
+
+
+def test_route_deja_traza_por_nivel(tmp_path, monkeypatch):
+    """P11: cada decisión de routing queda registrada con su nivel (§5)."""
+    log = tmp_path / "audit.jsonl"
+    route("estado", FakeClient(), actor="ana", audit_path=log)
+    route("hay alertas nuevas?", FakeClient(), actor="ana", audit_path=log)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    route("explica la causa raiz de todo", FakeClient(), actor="ana",
+          audit_path=log)
+    regs = _route_records(log)
+    assert [r["result"] for r in regs] == ["L0", "L1", "L2"]
+    assert [r["detail"]["handler"] for r in regs] == [
+        "handle_estado", "handle_ack", "run_loop"]
+    assert all(r["actor"] == "ana" for r in regs)
+
+
+def test_main_cli_registra_decision_l2(tmp_path):
+    import json
+    from l2agent.main import main as l2_cli_main
+    model = FakeModel([{"thought": "ok", "answer": "listo."}])
+    log = tmp_path / "audit.jsonl"
+    l2_cli_main(["pregunta", "--actor", "juan", "--audit", str(log)],
+                client=FakeMCP(payload=[]), model=model)
+    regs = _route_records(log)
+    assert regs and regs[0]["result"] == "L2"
+    assert regs[0]["detail"]["handler"] == "run_loop"
+    assert regs[0]["detail"]["text"] == "pregunta"
+
+
+def test_cli_actor_default_usa_identidad_del_kernel(tmp_path, monkeypatch):
+    """P11: el default NO es $USER (spoofeable) sino el dueño real del proceso."""
+    import json
+    import os
+    import pwd
+    from l2agent.main import main as l2_cli_main
+    monkeypatch.delenv("NOC_ACTOR", raising=False)
+    monkeypatch.setenv("USER", "intruso")
+    model = FakeModel([{"thought": "ok", "answer": "listo."}])
+    log = tmp_path / "audit.jsonl"
+    l2_cli_main(["pregunta", "--audit", str(log)],
+                client=FakeMCP(payload=[]), model=model)
+    lineas = [json.loads(x) for x in
+              log.read_text(encoding="utf-8").splitlines()]
+    esperado = pwd.getpwuid(os.getuid()).pw_name
+    assert lineas and all(l["actor"] == esperado for l in lineas)
+    assert all(l["actor"] != "intruso" for l in lineas)

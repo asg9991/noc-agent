@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Protocol
 
+from l2agent.audit import log_decision
 from l2agent.guardrails import DeniedHook
 from l2agent.loop import run_loop
 from l2agent.main import build_client_from_env, build_model_from_env
@@ -69,6 +70,11 @@ def handle_l2(
     `actor`/`channel` son la identidad real del origen (arquitectura §7):
     llegan hasta run_loop y quedan en cada registro de audit.
     """
+    log_decision(
+        audit_path, actor=actor, action="route", channel=channel,
+        result="L2",
+        detail={"handler": "run_loop", "text": text[:200]},
+    )
     try:
         the_model = model if model is not None else build_model_from_env(role)
         the_client = client if client is not None else build_client_from_env()
@@ -79,7 +85,6 @@ def handle_l2(
         actor=actor, channel=channel,
         audit_path=audit_path, on_denied=on_denied,
     )
-
 
 Handler = Callable[[ZabbixReader], str]
 
@@ -127,16 +132,32 @@ def classify_l1(text: str) -> Handler | None:
 
 
 def route(text: str, client: ZabbixReader,
-          actor: str = "l2", channel: str = "lab") -> tuple[str, str]:
+          actor: str = "l2", channel: str = "lab",
+          audit_path: str = "audit.jsonl") -> tuple[str, str]:
     """Devuelve (nivel, respuesta). Niveles: L0 | L1 | L2.
 
     `actor`/`channel` identifican al origen real (usuario de canal) y se
-    propagan al audit cuando la interacción llega a L2.
+    propagan al audit. Cada decisión de routing queda registrada con su
+    nivel (arquitectura §5 → informe mensual de distribución por nivel);
+    la decisión L2 la registra `handle_l2` (así cubre también a los
+    llamadores directos).
     """
     handler = route_l0(text)
     if handler is not None:
+        _log_route(audit_path, actor, channel, "L0", handler.__name__, text)
         return ("L0", handler(client))
     handler = classify_l1(text)
     if handler is not None:
+        _log_route(audit_path, actor, channel, "L1", handler.__name__, text)
         return ("L1", handler(client))
-    return ("L2", handle_l2(text, actor=actor, channel=channel))
+    return ("L2", handle_l2(text, actor=actor, channel=channel,
+                            audit_path=audit_path))
+
+
+def _log_route(audit_path: str, actor: str, channel: str,
+               level: str, handler_name: str, text: str) -> None:
+    log_decision(
+        audit_path, actor=actor, action="route", channel=channel,
+        result=level,
+        detail={"handler": handler_name, "text": text[:200]},
+    )

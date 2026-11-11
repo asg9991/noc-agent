@@ -225,3 +225,24 @@ mismo `WorkingDirectory`/env del watch (los paths por defecto son relativos).
 Backup offsite de `audit.jsonl` y `watch.db`: P14 del backlog (integrar al
 esquema de backups de ops). Hasta entonces, la retención acota la pérdida
 potencial a la ventana configurada.
+
+## 11. Informe de distribución por nivel (P11)
+
+La arquitectura §5 promete "cada decisión de routing se registra → informe
+mensual de distribución por nivel" (insumo de costos: cuánto tráfico
+resolvió cada nivel barato antes de caer a L2). Implementado:
+
+- Cada decisión deja una traza en `audit.jsonl`: `action="route"`,
+  `result` = `L0` | `L1` | `L2`, `detail` con handler y pregunta (recortada
+  a 200 chars). La decisión L2 la registra `handle_l2` (cubre router y
+  llamadores directos); el CLI `l2agent.main` registra la suya (L2 por
+  construcción).
+
+```bash
+python -m l2agent.audit audit.jsonl                  # totales por nivel
+python -m l2agent.audit audit.jsonl --since 2026-11-01   # mes en curso
+```
+
+El reporte agrega por nivel, handler y actor. Fuera de alcance: el dispatch
+por subcomandos de `agent/cli.py` (comandos fijos, sin decisión de routing;
+sus handlers son los mismos que registra `route()`).

@@ -130,7 +130,7 @@
   propio por proceso (el hub ya cura tools por token/rol); el alta/baja/
   rotación de tokens queda en P17.
 
-- [ ] **P11 · Las decisiones de routing L0/L1 no se auditan** 🟠
+- [x] **P11 · Las decisiones de routing L0/L1 no se auditan** 🟠
   `agent/router.py` no registra nada; la arquitectura §5 promete "cada
   decisión de routing se registra → informe mensual de distribución por
   nivel" (insumo de costos para el cliente). Agregar log por nivel y un
@@ -139,6 +139,14 @@
   (`pwd.getpwuid(os.getuid())`) en vez de `$USER` spoofeable — la cadena
   `--actor` → `NOC_ACTOR` → `$USER` → `"cli"` es auto-declarada; el único
   nivel con valor de autenticación es el dueño real del proceso.
+  Hecho (2026-11-09): traza `action="route"` con `result` = L0/L1/L2 +
+  handler/pregunta en `detail` — `route()` registra L0/L1, `handle_l2` la
+  decisión L2 (cubre llamadores directos), `l2agent.main` la suya. Informe
+  agregable `python -m l2agent.audit [--since]` (por nivel, handler y
+  actor). Identidad por kernel: `$USER` reemplazado por
+  `pwd.getpwuid(os.getuid())` con test de no-spoof. 4 tests nuevos (122
+  suite). Runbook §11. Fuera de alcance: dispatch de `agent/cli.py`
+  (comandos fijos, sin decisión de routing).
 
 - [ ] **P12 · Secretos y permisos pendientes de rotar** 🟠
   Según `docs/auditoria-2026-09-10.md`: toml del hub con token en 644, `.env`

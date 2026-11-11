@@ -32,3 +32,24 @@ def test_segunda_llamada_agrega_sin_reescribir(tmp_path):
     segunda = json.loads(lineas[1])
     assert segunda["result"] == "error"
     assert segunda["detail"] == {"motivo": "timeout al hub"}
+
+
+def test_informe_agrega_por_nivel(tmp_path):
+    """P11: el informe de distribución por nivel agrega las trazas de routing."""
+    from l2agent.audit import routing_report
+    log = tmp_path / "audit.jsonl"
+    log_decision(log, actor="ana", action="route", channel="lab",
+                 result="L0", detail={"handler": "handle_estado", "text": "x"})
+    log_decision(log, actor="ana", action="route", channel="lab",
+                 result="L0", detail={"handler": "handle_estado", "text": "y"})
+    log_decision(log, actor="juan", action="route", channel="mail",
+                 result="L2", detail={"handler": "run_loop", "text": "z"})
+    log_decision(log, actor="ana", action="respuesta_final", channel="lab",
+                 result="ok")  # ruido: no es decisión de routing
+    r = routing_report(log)
+    assert r["total"] == 3
+    assert r["levels"] == {"L0": 2, "L2": 1}
+    assert r["handlers"] == {"handle_estado": 2, "run_loop": 1}
+    assert r["actors"] == {"ana": 2, "juan": 1}
+    r_mes = routing_report(log, since="2099-01-01")
+    assert r_mes["total"] == 0
