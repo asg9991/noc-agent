@@ -84,7 +84,11 @@ Dos identidades conviven y no se mezclan (arquitectura §7):
 - **Identidad de infraestructura**: el hub habla por token — un bearer por
   consumidor (CLI L2, router/adapters, agentes de técnicos). Cada proceso
   lleva su `MCP_BEARER` propio; el hub cura tools por token (rol
-  `operator`/`technician`) y ve quién consulta.
+  `operator`/`technician`) y ve quién consulta. Ubicación del archivo
+  bearer (P13): `MCP_BEARER_FILE` apunta al archivo 600 — lab usa
+  `/tmp/.mcp_bearer` (directorio compartido, solo lab); en producción
+  `$XDG_RUNTIME_DIR/noc-agent/mcp_bearer` o el home del servicio, 600,
+  jamás `/tmp`. En systemd: `Environment=MCP_BEARER_FILE=%t/noc-agent/mcp_bearer`.
 - **Identidad de aplicación**: cada registro de audit lleva `actor` (quién
   preguntó: usuario de canal o técnico) y `channel` (desde dónde: lab, mail,
   discord). Se propagan hasta `run_loop` desde cada origen: CLI

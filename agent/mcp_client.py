@@ -5,8 +5,9 @@ allowlist in mcp/catalog.py is the gate: anything not listed never leaves
 this process (PermissionError). No bearer is ever logged or persisted.
 
 Lab: base_url http://127.0.0.1:8080/mcp, bearer from MCP_BEARER env or
-/tmp/.mcp_bearer (600, outside the repo). Prod: same shape against the
-dedicated VM over LAN/tunnel.
+MCP_BEARER_FILE (default lab: /tmp/.mcp_bearer, 600, outside the repo).
+Prod: MCP_BEARER_FILE under $XDG_RUNTIME_DIR or the service home (600),
+hub over LAN/tunnel; /tmp is shared and lab-only (P13).
 """
 
 from __future__ import annotations
@@ -31,14 +32,22 @@ _BASE_HEADERS = {
 
 
 def resolve_bearer(explicit: str = "") -> str:
-    """Bearer without ever printing it. Explicit > env > /tmp file."""
+    """Bearer without ever printing it. Explicit > env > file.
+
+    El archivo es MCP_BEARER_FILE si está definido, si no el default de lab
+    (/tmp/.mcp_bearer). En producción: apuntar MCP_BEARER_FILE a un archivo
+    600 bajo $XDG_RUNTIME_DIR o el home del servicio — /tmp es directorio
+    compartido y solo vale para lab (P13, runbook §4).
+    """
     if explicit:
         return explicit
     env = os.getenv("MCP_BEARER", "").strip()
     if env:
         return env
+    file_env = os.getenv("MCP_BEARER_FILE", "").strip()
+    path = Path(file_env) if file_env else BEARER_FILE
     try:
-        return BEARER_FILE.read_text(encoding="utf-8").strip()
+        return path.read_text(encoding="utf-8").strip()
     except OSError:
         return ""
 

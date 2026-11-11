@@ -148,7 +148,7 @@
   suite). Runbook §11. Fuera de alcance: dispatch de `agent/cli.py`
   (comandos fijos, sin decisión de routing).
 
-- [ ] **P12 · Secretos y permisos pendientes de rotar** 🟠
+- [x] **P12 · Secretos y permisos pendientes de rotar** 🟠
   Según `docs/auditoria-2026-09-10.md`: toml del hub con token en 644, `.env`
   del lab en 664, token de Telegram presente en historial git del lab.
   Rotar y corregir permisos (sin pegar valores en ningún repo).
@@ -162,11 +162,19 @@
   Telegram queda en el historial de `zbx-in-docker`
   (`template_telegram_webhook.xml`, commits da12351/1765f40/5be7da0/
   ac7bd77) — purgar historial = decisión destructiva posterior a rotar.
+  Decisión del usuario (2026-11-09): en LAB los tokens quedan como están
+  (aceptado); lo que tiene que quedar cristalino es la rotación para
+  CLIENTES → criterio reforzado en P17.
 
-- [ ] **P13 · Bearer en `/tmp/.mcp_bearer`** 🟡
+- [x] **P13 · Bearer en `/tmp/.mcp_bearer`** 🟡
   Aceptable en lab; `/tmp` es directorio compartido. Replantear la ubicación
   para producción (ej. `XDG_RUNTIME_DIR` o archivo 600 bajo el home del
   servicio). Verificación: documentación de prod actualizada.
+  Hecho (2026-11-09): knob `MCP_BEARER_FILE` en `agent/mcp_client.py`
+  (prioridad: explícito > `MCP_BEARER` > archivo; default de lab sin
+  cambios). Prod documentado en runbook §4 (`$XDG_RUNTIME_DIR/noc-agent/
+  mcp_bearer` o home del servicio, 600, jamás `/tmp`; ejemplo systemd con
+  `%t`). 4 tests de la cadena de resolución.
 
 - [ ] **P14 · Backups automáticos/offsite de estado del agente** 🟡
   audit JSONL + watch DB sin backup (el patrón de backups de repos de cliente
@@ -190,6 +198,9 @@
   El procedimiento vive suelto en `odd/tasks/l2-local-agent.md` §Cierre.
   Pasarlo a `docs/` (operación del hub, alta/baja/rotación de tokens por
   rol). Verificación: alguien lo sigue sin leer la bitácora.
+  Criterio (2026-11-09, decisión sobre P12): la rotación tiene que quedar
+  cristalina para instancias de CLIENTE (en lab los tokens quedan como
+  están, aceptado).
 
 - [ ] **P18 · Runbook de upgrade incompleto** 🟡
   `zbx-in-docker/docs/instalacion.md`: 3 pasos sin backup/restore/
