@@ -67,7 +67,15 @@ Pendiente operativo:
 - [x] Clasificación `error_auth` en `l2agent`: credencial vencida vs transitorio + alarma (`l2agent/errors.py`, T7/T8 del feature branch).
 - [x] Telemetría de piloto free: `usage_total` en `ChatModel` + `usage` en `respuesta_final` del audit (50 passed).
 - [ ] Mover hub a VM dedicada fuera del compose (decisión de arquitectura).
-- [ ] Revisar permisos y secretos según auditoría (toml con token, `.env` group-writable, token Telegram en historial) — rotar y corregir permisos, sin pegar valores acá.
+- [x] Permisos según auditoría (2026-11-09, P12): `docker/zabbix-mcp-config.toml`
+  → 600 sin ACLs (tenía una ACL huérfana `user:dnsmasq:r--`); `docker/.env`
+  → 600; ambos ignorados por git. Hub verificado sano tras el cambio.
+- [ ] Rotar secretos expuestos (P12, acciones manuales): `api_token` de
+  Zabbix en el toml del hub (rotar vía UI de Zabbix — procedimiento en P17)
+  y el token del media Telegram (BotFather; el media está activo en el lab,
+  id 16). El token de Telegram queda en el historial de `zbx-in-docker`
+  (`template_telegram_webhook.xml`, 4 commits); purgar el historial es una
+  decisión destructiva aparte (estilo P15) que solo vale después de rotar.
 
 ### Identidad por consumidor (P10)
 

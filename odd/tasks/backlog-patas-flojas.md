@@ -153,6 +153,15 @@
   del lab en 664, token de Telegram presente en historial git del lab.
   Rotar y corregir permisos (sin pegar valores en ningún repo).
   Verificación: checklist tildada en el runbook §4.
+  Hecho (2026-11-09) — permisos: toml → 600 sin ACLs (se removió la ACL
+  huérfana `user:dnsmasq` que dejaba lectura extra), `.env` ya estaba 600;
+  ambos ignorados por git (verificado con `git ls-files`/`check-ignore`);
+  hub sano tras el cambio (problem_active_get OK). Pendiente — rotaciones
+  manuales: `api_token` Zabbix del toml (UI, procedimiento P17) y token del
+  media Telegram (BotFather; media activo id 16 en el lab). El token de
+  Telegram queda en el historial de `zbx-in-docker`
+  (`template_telegram_webhook.xml`, commits da12351/1765f40/5be7da0/
+  ac7bd77) — purgar historial = decisión destructiva posterior a rotar.
 
 - [ ] **P13 · Bearer en `/tmp/.mcp_bearer`** 🟡
   Aceptable en lab; `/tmp` es directorio compartido. Replantear la ubicación
