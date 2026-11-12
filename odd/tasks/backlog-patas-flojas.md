@@ -207,11 +207,23 @@ outside-view del rango como slice nuevo al mergear a main (P16).
 
 ## C. Proceso y repos
 
-- [ ] **P15 · El nombre del cliente está en el historial público de `main`** 🟠
+- [x] **P15 · El nombre del cliente está en el historial público de `main`** 🟠
   README/docs ya desidentificados en HEAD, pero el nombre queda en commits
   viejos del repo público. Limpiar el historial requiere reescritura
   destructiva + force push: decidir explícitamente (en zbx-in-docker se hizo
   con autorización) o aceptar y documentar la exposición.
+  Decisión del usuario (2026-11-12): reescribir (autorización explícita).
+  Hecho: `git filter-repo` con reemplazo del nombre → `cliente` en blobs y
+  mensajes (8 commits de contenido 2026-09-26→2026-11-06 + 2 mensajes),
+  3 ramas forzadas a origin con lease: `main` 85e34fb→8ac3744,
+  `feature/l2-local-agent` cda4737→fa2264b (el trabajo P9–P15 de esta
+  sesión se publica recién con este push), `feature/mcp-client`
+  6ba555c→e56d8da. Verificado: 0 menciones en contenido y mensajes, tree
+  hash idéntico antes/después (contenido intacto byte a byte). Backup
+  pre-rewrite: bundle local. CAVEAT: los SHAs viejos pueden seguir
+  accesibles por URL directa en GitHub (objetos colgados) hasta GC o purga
+  por soporte; para borrado total hay que pedir la purga con los SHAs
+  viejos (85e34fb4, bcfaf7c, 224aadc, 6ba555c3...).
 
 - [ ] **P16 · `feature/l2-local-agent` sin merge a `main`** 🟠
   20 commits (~2.5k líneas, 76 tests) esperan integración. Definir el flujo
