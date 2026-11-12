@@ -176,10 +176,22 @@
   mcp_bearer` o home del servicio, 600, jamás `/tmp`; ejemplo systemd con
   `%t`). 4 tests de la cadena de resolución.
 
-- [ ] **P14 · Backups automáticos/offsite de estado del agente** 🟡
+- [x] **P14 · Backups automáticos/offsite de estado del agente** 🟡
   audit JSONL + watch DB sin backup (el patrón de backups de repos de cliente
   ya existe en ops). Incorporar al esquema de backups existente.
   Verificación: backup + restore probados.
+  Hecho (2026-11-09): `scripts/backup-estado.sh` siguiendo el esquema de
+  ops (`engram-backup.sh`): snapshot WAL-safe del SQLite → tar.gz con
+  MANIFEST+sha256 → cifrado age/openssl (passphrase por env, jamás en
+  archivo) → staging `~/backups/noc-agent-estado` con rotación
+  `NOC_BACKUP_KEEP` → upload a Drive `backups/noc-agent/` vía google-agent.
+  Upload en claro prohibido (rechazado). En lab el offsite se simula con
+  `--dry-run`/`--output`. Restore verificado (`--force` para pisar,
+  checksums validados). 6 tests: round-trip de punta a punta, refusal sin
+  --force, rotación, tamper detectado, cifrado round-trip, rechazo de
+  upload sin cifrar (132 suite). Camino de prod allanado pero NO probado
+  en producción (decisión del usuario 2026-11-09: lab simula, prod se
+  prueba al pasar a instancia con cliente). Runbook §12.
 
 ## C. Proceso y repos
 

@@ -258,3 +258,47 @@ python -m l2agent.audit audit.jsonl --since 2026-11-01   # mes en curso
 El reporte agrega por nivel, handler y actor. Fuera de alcance: el dispatch
 por subcomandos de `agent/cli.py` (comandos fijos, sin decisión de routing;
 sus handlers son los mismos que registra `route()`).
+
+## 12. Backups del estado del agente (P14)
+
+El estado del agente (`audit.jsonl`, `watch.db`, `outbox.jsonl` + cooldown)
+contiene datos del cliente en claro y ahora tiene backup y restore
+probados: `scripts/backup-estado.sh`, integrado al esquema de backups de
+ops (`~/projects/ops/scripts/engram-backup.sh` — mismo estilo de flags,
+misma cadena de cifrado, mismo upload vía google-agent CLI).
+
+Flujo: snapshot WAL-safe del SQLite → `tar.gz` con MANIFEST + `sha256sums`
+→ cifrado (`age --passphrase`, fallback `openssl -aes-256-cbc -pbkdf2`)
+→ staging local con rotación → upload a Drive (`backups/noc-agent/`).
+La passphrase vive en `NOC_BACKUP_PASSPHRASE` (o prompt) — jamás en archivo.
+**Subir en claro está prohibido**: el upload rechaza artefactos sin cifrar.
+
+### Lab (offsite simulado)
+
+```bash
+./scripts/backup-estado.sh --dry-run --output /tmp/noc-bkp-test   # todo local
+NOC_BACKUP_PASSPHRASE=secret ./scripts/backup-estado.sh --dry-run # cifrado local
+./scripts/backup-estado.sh --restore <archivo> --state-dir <dir>  # restore
+```
+
+`--dry-run` omite el upload; `--output DIR` deja la copia como si fuera el
+offsite. `--state-dir` apunta a dónde viven los artefactos (default: `.`;
+el timer del watch usa `~/.local/share/noc-agent-watch/`).
+Staging/rotación: `NOC_BACKUP_DIR` (default `~/backups/noc-agent-estado`),
+`NOC_BACKUP_KEEP` (default 3).
+
+### Prod (camino allanado, NO probado en producción)
+
+Sin `--dry-run` el script sube vía `google-agent` CLI a
+`backups/noc-agent/` en Drive — el mismo canal que usan los backups de
+ops. Requiere el google-agent configurado (`GOOGLE_AGENT_DIR`) y
+passphrase. **Estado honesto: el upload real no se probó contra
+producción**; lo probado es la cadena completa local (backup → desastre →
+restore con verificación de checksums, restore cifrado round-trip, y el
+rechazo de artefactos sin cifrar).
+
+Restore seguro: se niega a pisar estado existente sin `--force`, y valida
+el `sha256` del MANIFEST antes de tocar nada (un artefacto tampered no
+restaura).
+
+Timer sugerido (junto a los de P9): semanal, después de la retención.
