@@ -5,6 +5,18 @@
 > con su propio commit. Prioridad: 🔴 alta (rompe comportamiento o expone
 > datos) · 🟠 media · 🟡 baja.
 
+## Cierre del bloque P9–P14 (2026-11-12)
+
+Código + tests (132 green) y verificación de tier completas: P9 con
+verificador independiente (2 blockers encontrados y corregidos), P14 con
+e2e backup/restore, P10–P13 con tests de aceptación. La revisión NATIVA no
+se completó por bug del runtime de reviewers (gentle-ai#4873 — ocurrencia
+reportada en ese issue); decisión del usuario: cerrar sin ese receipt.
+Todas las transacciones de review quedaron liberadas (abandon):
+`review-facbb8a0…`, `review-b44e826f…` y la stale `review-991fa5dc…`
+(sep 2026, candidato del catálogo MCP, ya commiteado). Opción futura:
+outside-view del rango como slice nuevo al mergear a main (P16).
+
 ## A. Bugs de código
 
 - [x] **P1 · `watch.sweep` no parsea la respuesta real del hub (crítico)** 🔴
