@@ -266,9 +266,26 @@ outside-view del rango como slice nuevo al mergear a main (P16).
   y documentado en el runbook (§Permisos del toml). Rollback del runbook no
   ejercitado (sin rojo; mismos mecanismos ya probados).
 
-- [ ] **P18 · Runbook de upgrade incompleto** 🟡
+- [x] **P18 · Runbook de upgrade incompleto** 🟡
   `zbx-in-docker/docs/instalacion.md`: 3 pasos sin backup/restore/
   verificación. Completar (repo zbx-in-docker).
+  Hecho (2026-11-13): sección "Actualizar la versión de Zabbix" completa —
+  §0 backup pre-upgrade (pg_dump + `.env.bak` + snapshot de tags; "sin dump
+  no hay rollback"), §1 upgrade, §2 verificación post (checklist §1–§10 +
+  apiinfo + log de esquema + hub smoke), §3 rollback (restore sobre base
+  vacía). Verificado ejecutándolo en lab: backup real (29 MB, `gzip -t` OK),
+  **restore drill** en postgres descartable (207 tablas, 387 hosts, 0
+  errores), **dry-run del upgrade** a versión idéntica (build + recreate +
+  migración no-op) y verificación completa verde. El drill agarró 2 fallos
+  latentes más de la clase "config que se resuelve una sola vez":
+  (a) `data/certs/` vacío desde sep → `zbx-nginx` crash-loops al primer
+  recreate (`cannot load certificate`); corregido con par self-signed en el
+  layout 600/644 — el contenedor viejo escondía la config rota, igual que la
+  ACL del P17; (b) el servicio compose es `nginx` (el contenedor
+  `zbx-nginx`) — trampa de nombres. Además Paso 4 usaba `http://` (301 con
+  TLS) → `https://`. **PENDIENTE**: bump real de versión con migración de
+  esquema entre versiones (ejercitar en la primera actualización de patch);
+  marcado en el runbook §1.
 
 ## D. Arquitectura e IA local
 
