@@ -325,7 +325,7 @@ outside-view del rango como slice nuevo al mergear a main (P16).
   (arquitectura §9): definir tras Fase 4, alineado con el proyecto de IA
   local (dónde vive la memoria, quién la consulta).
 
-- [ ] **P25 · Integridad y tamper-evidence del audit** 🟠
+- [x] **P25 · Integridad y tamper-evidence del audit** 🟠
   `audit.jsonl` es un archivo plano: "append-only" es convención, no
   mecanismo — cualquiera con write sobre el archivo reescribe historia y el
   backup (P14) conservaría hasta la versión falsificada. Mitigar con
@@ -334,3 +334,15 @@ outside-view del rango como slice nuevo al mergear a main (P16).
   Fase 4: un actor falsificado no debería poder ordenar writes con evidencia
   imposible de auditar. Verificación: intento de modificación de una línea
   pasada es detectable.
+  Hecho (2026-11-13): hash-chain ligera en `l2agent/audit.py` — cada línea
+  encadenada (`prev_hash`/`entry_hash`, sha256 canónico), archivo en `600`
+  (fchmod, también en legados) y lock por archivo contra carrera. CLI:
+  `python -m l2agent.audit <log> --verify` (exit 0 intacto / 2 sin sellar /
+  1 manipulado con `broken_line`) y `--seal` (migración atómica de historia
+  legada; se niega si la cadena sellada está rota — no lava manipulaciones).
+  Verificado con TDD: RED (`ImportError`) → GREEN con 7 tests nuevos
+  (modificación detectada ✓, borrado ✓, inserción ✓, sello preservando
+  contenido ✓, rechazo de sello sobre cadena rota ✓, permisos 600 ✓);
+  **139 passed** en total. Runbook §13 con el modelo de amenaza honesto
+  (cadena ligera: no cubre atacante que recalcule toda la cadena; sink
+  externo append-only queda pendiente para Fase 4).
