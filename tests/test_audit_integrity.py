@@ -112,3 +112,54 @@ def test_archivo_se_crea_con_permisos_600(tmp_path):
     log = tmp_path / "audit.jsonl"
     log_decision(log, actor="a", action="x", channel="lab", result="ok")
     assert oct(log.stat().st_mode & 0o777) == "0o600"
+
+
+# --- Probes de regresión del verificador independiente (B1/B2/B3) ---
+
+
+def _write_raw(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8")
+
+
+def test_linea_json_no_objeto_es_linea_rota_no_crash(tmp_path):
+    """B1: --verify reporta broken_line (no crashea) en líneas no-objeto."""
+    from l2agent.audit import main, verify_audit
+    log = tmp_path / "audit.jsonl"
+    log_decision(log, actor="a", action="x", channel="lab", result="ok")
+    raw = log.read_text(encoding="utf-8").splitlines()
+    for payload in ("null", "5", "[1,2]", '"hola"'):
+        _write_raw(log, raw[0] + "\n" + payload + "\n")
+        v = verify_audit(log)
+        assert v["ok"] is False and v["broken_line"] == 2  # nunca raise
+    # --seal sobre basura legada debe rechazar limpio, sin traceback
+    _write_raw(log, '{"ts": "2026-01-01T00:00:00+00:00", "actor": "a", '
+                    '"action": "x", "channel": "lab", "result": "ok", '
+                    '"detail": {}}\n[1,2]\n')
+    assert main([str(log), "--seal"]) != 0
+
+
+def test_seal_y_verify_rechazan_since(tmp_path):
+    """B2: --since no se ignora silenciosamente en --verify/--seal."""
+    from l2agent.audit import main
+    log = tmp_path / "audit.jsonl"
+    log_decision(log, actor="a", action="x", channel="lab", result="ok")
+    assert main([str(log), "--verify", "--since", "2026-01-01"]) != 0
+    assert main([str(log), "--seal", "--since", "2026-01-01"]) != 0
+
+
+def test_append_concurrente_no_rompe_la_cadena(tmp_path):
+    """B3: log_decision concurrente no produce cadena rota (lock real)."""
+    import threading
+    from l2agent.audit import verify_audit
+    log = tmp_path / "audit.jsonl"
+    barrier = threading.Barrier(2)
+
+    def w(i):
+        barrier.wait()
+        log_decision(log, actor=f"t{i}", action="x", channel="lab",
+                     result="ok")
+
+    ts = [threading.Thread(target=w, args=(i,)) for i in range(2)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert verify_audit(log)["ok"] is True

@@ -10,6 +10,7 @@ caja negra.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -38,7 +39,12 @@ def _tail_hash(p: Path) -> str:
             for line in fh:
                 if line.strip():
                     last = line
-        return str(json.loads(last).get("entry_hash", "")) if last else ""
+        if not last:
+            return ""
+        record = json.loads(last)
+        if isinstance(record, dict):
+            return str(record.get("entry_hash", ""))
+        return ""
     except (OSError, json.JSONDecodeError):
         return ""
 
@@ -70,13 +76,14 @@ def log_decision(
     p.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(p, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o600)
     try:
+        fcntl.flock(fd, fcntl.LOCK_EX)  # serializa writers (hebras/procesos)
         os.fchmod(fd, 0o600)  # permisos estrictos (P25), también en legados
         record["prev_hash"] = _tail_hash(p)
         record["entry_hash"] = _entry_hash(record)
         os.write(fd, (json.dumps(record, ensure_ascii=False) + "\n")
                  .encode("utf-8"))
     finally:
-        os.close(fd)
+        os.close(fd)  # close libera el lock
     return record
 
 
@@ -102,6 +109,9 @@ def verify_audit(path: str | Path) -> dict[str, Any]:
             record = json.loads(raw)
         except json.JSONDecodeError:
             result.update(ok=False, broken_line=n)
+            return result
+        if not isinstance(record, dict):
+            result.update(ok=False, broken_line=n)  # línea corrupta/inyectada
             return result
         if "entry_hash" not in record:
             if sealed_seen:
@@ -217,6 +227,11 @@ def main(argv: list[str] | None = None) -> int:
                       help="sella la historia legada (rechaza si hay cadena "
                            "rota)")
     args = parser.parse_args(argv)
+    if args.since and (args.verify or args.seal):
+        import sys
+        print("error: --since solo aplica al informe por nivel",
+              file=sys.stderr)
+        return 1
     if args.verify:
         result = verify_audit(args.path)
         print(json.dumps(result, ensure_ascii=False, indent=2))
