@@ -22,5 +22,9 @@ data/
 *.sqlite*
 *.log
 
+# Runtime artifacts del agente (audit/outbox: preguntas, hosts, avisos)
+*.jsonl
+*.jsonl.*
+
 # Gentle-AI local cache (regenerable via skill-registry refresh)
 .atl/

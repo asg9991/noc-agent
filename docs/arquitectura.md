@@ -51,7 +51,7 @@ etapas posteriores y bajo permisos— ejecuta acciones sobre la infraestructura.
 - **Mail, Discord y Telegram son adapters intercambiables**, no intermediarios: distintos frentes hacia el mismo orquestador. Reciben alertas y conversan en el canal que cada cliente ya usa.
 - **Los agentes de código son clientes MCP directos**: OpenCode, Claude Code, Codex y agentes de técnicos de la coope se conectan al mismo hub vía MCP nativo, sin pasar por Discord ni Telegram. Mismo hub, mismo gobierno, distinto token/rol.
 - **n8n vive solo en el borde**: transforma y entrega (webhooks, formatos), nunca decide ni autoriza.
-- **Instancias**: el producto es agnóstico al canal; cada despliegue elige sus adapters. Instancia de referencia (cliente, 2026-10): mail-first.
+- **Instancias**: el producto es agnóstico al canal; cada despliegue elige sus adapters. Instancia de referencia (2026-10): mail-first.
 - El orquestador define un **vocabulario abstracto de interacción** (`reply`, `menu`, `form`, `ephemeral`) que cada canal chat traduce a sus componentes nativos. Los agentes directos no usan ese vocabulario: piden tools MCP por nombre.
 
 | Camino | Quién | Entra por | Usa | No usa |
@@ -155,8 +155,9 @@ El historial del hilo alimenta al agente como contexto natural del incidente.
 Cada adapter (mail, Discord, Telegram) reutiliza el mismo orquestador y vocabulario;
 la tabla de arriba muestra el mapeo para Discord a modo de referencia.
 
-> Instancia cliente (2026-10): mail-first. Discord/Telegram quedan fuera del plan
-> inmediato; el adapter mail usa hilos por incidente en lugar de threads de chat.
+> Instancia de referencia (2026-10): mail-first. Discord/Telegram quedan fuera
+> del plan inmediato; el adapter mail usa hilos por incidente en lugar de
+> threads de chat.
 
 ### Agentes directos (sin Discord en el medio)
 
@@ -194,8 +195,8 @@ ejecutarse.
 | 0 | Adaptar compose a lab local (`DATA_DIR` parametrizado) y levantar stack Zabbix | hecha |
 | 1 | Datos simulados: hosts falsos con triggers que flappean (problemas reales para consultar) | hecha |
 | 2 | Hub MCP: initMAX zabbix-mcp-server v1.36.1 filtrado read-only; validación con endpoint externo (Claude Code/OpenCode) | hecha (decisión 2026-09-26) |
-| 3 | Orquestador: router L0/L1 + librería cliente compartida; CLI primero | skeleton hecho (L2 stub; L2 real pendiente de `mcp/` client config) |
-| 4 | Adapter Discord: alertas→hilos, botones, ephemeral, ledger de routing | pendiente |
+| 3 | Orquestador: router L0/L1 + librería cliente compartida; CLI primero | hecho: router + CLI + L2 real (`l2agent`: loop, guardrails, auditoría, watch/notify) en rama `feature/l2-local-agent` (pendiente de merge) |
+| 4 | Adapter de canal (mail primero; Discord/Telegram según instancia): alertas→hilos, confirmaciones, ledger de routing | pendiente |
 
 Decisión Fase 2 (2026-09-26, ratificada): initMAX `zabbix-mcp-server` v1.36.1.
 Criterios aplicados: filtrado de tools por token (curado 15–25, nunca catálogo
@@ -206,6 +207,7 @@ Evidencia: spike MCP en lab (rotación de tokens, ACL 600), research §3–§4.
 ## 9. Decisiones abiertas
 
 - Modelo fuerte de producción (decisión del cliente; adapter ya contempla nube).
-- Instancia cliente (2026-10, verde): L2 cubierto con LLM/agente local en VM propia
-  + notificaciones por mail; WhatsApp mediano/largo plazo condicional.
+- Instancia de referencia (2026-10, verde): L2 cubierto con LLM/agente local
+  en VM propia + notificaciones por mail; WhatsApp mediano/largo plazo
+  condicional.
 - Persistencia de memoria de largo plazo para "conocer el NOC" (runbooks, incidentes): a definir tras Fase 4.

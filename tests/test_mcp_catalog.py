@@ -86,10 +86,22 @@ def test_validate_catalog_rejects_bad_data():
         validate_catalog(tiny)
 
 
-def test_l2_answer_references_curated_catalog():
-    from agent.router import L2_FALLBACK, route
+def test_l2_answer_fluye_por_el_gate_curado(tmp_path):
+    from agent.router import handle_l2
 
-    level, text = route("correlaciona la causa raiz con runbooks", object())
-    assert level == "L2"
-    assert text.startswith(L2_FALLBACK)
-    assert "mcp/curated-tools.json" in text
+    class FakeModel:
+        def decide(self, goal, history):
+            if not history:
+                return {"thought": "intento write",
+                        "action": {"tool": "host_create", "args": {}}}
+            return {"thought": "denegado", "answer": "Crear no está permitido."}
+
+    class FakeMCP:
+        def call_tool(self, name, args=None):  # pragma: no cover
+            raise AssertionError("el gate frena antes de la red")
+
+    log = tmp_path / "audit.jsonl"
+    text = handle_l2("creá un host", model=FakeModel(), client=FakeMCP(),
+                     audit_path=log)
+    assert text == "Crear no está permitido."
+    assert "denegado" in log.read_text(encoding="utf-8")

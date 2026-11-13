@@ -21,9 +21,9 @@ Sin valores de secretos: solo existencia/patrones. Sin commits.
 - Spike `docs/mcp-spike-fase2.md` sin commitear; compose y .gitignore con cambios locales sin commitear (no tocar).
 - Tags flotantes: `nginx:alpine`, `postgres:15`, `lab-simulator:latest` (supply chain).
 
-## Prod `zabbix-muni` (ssh no interactivo, solo lectura)
+## Prod del cliente (ssh no interactivo, solo lectura)
 
-- Up 6 días. Contenedores: `muni/zabbix-server:7.4.13`, web 7.4.13, postgres 15, nginx:alpine. Sin grafana, sin MCP.
+- Up 6 días. Contenedores: `zabbix-server:7.4.13`, web 7.4.13, postgres 15, nginx:alpine. Sin grafana, sin MCP.
 - Puertos: 80, 10051, 14022. Nginx sin TLS.
 - Sin crontab para usuario zabbix; offsite pendiente.
 

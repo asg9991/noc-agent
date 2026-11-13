@@ -46,8 +46,9 @@ usa (adapters: mail, Discord, Telegram) y técnicos con agentes directos al MCP:
         └─────────────────┘
 ```
 
-> Instancia cliente: guardia por mail (hilos por incidente). Discord/Telegram
-> disponibles para otras instancias sin cambiar el orquestador.
+> Instancia de referencia: guardia por mail (hilos por incidente).
+> Discord/Telegram disponibles para otras instancias sin cambiar el
+> orquestador.
 
 ### Características principales
 

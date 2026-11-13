@@ -2,12 +2,21 @@
 
 L0: reglas exactas (0 tokens) -> handlers directos.
 L1: clasificador por keywords simple -> MISMO handler de L0.
-L2: stub, no implementado (escala a agente/MCP en fases siguientes).
+L2: agente local l2agent (loop + catálogo curado); sin LLM_MODEL configurado
+    avisa en vez de romper.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any, Callable, Protocol
+
+from l2agent.audit import log_decision
+from l2agent.guardrails import DeniedHook
+from l2agent.loop import run_loop
+from l2agent.main import build_client_from_env, build_model_from_env
+from l2agent.model import ChatModel
+from l2agent.tools import ToolClient
 
 
 class ZabbixReader(Protocol):
@@ -16,7 +25,10 @@ class ZabbixReader(Protocol):
     def get_hosts(self, limit: int = ...) -> list[dict[str, Any]]: ...
 
 
-L2_FALLBACK = "no implementado, usar MCP"
+L2_NO_MODEL = (
+    "L2 necesita un cerebro: definí LLM_MODEL (y opcionalmente LLM_BASE_URL) "
+    "y reintentá. Sin modelo no hay agente, solo stub."
+)
 
 
 def handle_estado(client: ZabbixReader) -> str:
@@ -40,15 +52,39 @@ def handle_ack(client: ZabbixReader) -> str:
     )
 
 
-def handle_l2(_text: str) -> str:
+def handle_l2(
+    text: str,
+    *,
+    model: ChatModel | None = None,
+    client: ToolClient | None = None,
+    role: str = "operator",
+    audit_path: str = "audit.jsonl",
+    on_denied: DeniedHook = None,
+    actor: str = "l2",
+    channel: str = "lab",
+) -> str:
+    """L2 real: el objetivo corre por el loop con el catálogo curado.
+
+    Sin inyección (producción/CLI): modelo y cliente salen del env. Sin
+    LLM_MODEL no se rompe: avisa qué falta. En tests se inyectan fakes.
+    `actor`/`channel` son la identidad real del origen (arquitectura §7):
+    llegan hasta run_loop y quedan en cada registro de audit.
+    """
+    log_decision(
+        audit_path, actor=actor, action="route", channel=channel,
+        result="L2",
+        detail={"handler": "run_loop", "text": text[:200]},
+    )
     try:
-        from mcp.catalog import all_tools
-
-        count = len(all_tools())
-    except Exception:
-        return L2_FALLBACK
-    return f"{L2_FALLBACK} (curated catalog: {count} tools, see mcp/curated-tools.json)"
-
+        the_model = model if model is not None else build_model_from_env(role)
+        the_client = client if client is not None else build_client_from_env()
+    except SystemExit:
+        return L2_NO_MODEL
+    return run_loop(
+        text, model=the_model, client=the_client,
+        actor=actor, channel=channel,
+        audit_path=audit_path, on_denied=on_denied,
+    )
 
 Handler = Callable[[ZabbixReader], str]
 
@@ -58,18 +94,27 @@ L0_EXACT: dict[str, Handler] = {
     "ack": handle_ack,
 }
 
-# L1: keywords -> handler L0 (mismo handler, sin LLM).
-L1_KEYWORDS: list[tuple[str, Handler]] = [
-    ("problema", handle_ack),
-    ("problemas", handle_ack),
-    ("alerta", handle_ack),
-    ("alertas", handle_ack),
-    ("ack", handle_ack),
-    ("estado", handle_estado),
-    ("version", handle_estado),
-    ("hosts", handle_estado),
-    ("salud", handle_estado),
+# L1: palabras clave -> handler L0 (mismo handler, sin LLM). La coincidencia
+# es por PALABRA COMPLETA sin tildes ("versión" matchea "version"), nunca por
+# subcadena: "backup" no trae "ack" ni "estación" trae "estado".
+_ACENTOS = str.maketrans("áéíóúüñÁÉÍÓÚÜÑ", "aeiouunAEIOUUN")
+
+
+def _words(text: str) -> set[str]:
+    """Palabras en minúscula, sin tildes ni puntuación."""
+    limpio = text.translate(_ACENTOS).lower()
+    return set(re.findall(r"[a-z0-9]+", limpio))
+
+
+L1_KEYWORDS: list[tuple[frozenset[str], Handler]] = [
+    (frozenset({"problema", "problemas", "alerta", "alertas", "ack"}), handle_ack),
+    (frozenset({"estado", "version", "versions", "versiones",
+                "host", "hosts", "salud"}), handle_estado),
 ]
+
+# Consultas de estado que no nombran la palabra "estado":
+# "¿cómo está el zabbix?", "cómo están los servers".
+_ESTADO_RE = re.compile(r"\bcomo esta(?:s|n)?\b")
 
 
 def route_l0(text: str) -> Handler | None:
@@ -77,19 +122,42 @@ def route_l0(text: str) -> Handler | None:
 
 
 def classify_l1(text: str) -> Handler | None:
-    lowered = text.strip().lower()
-    for keyword, handler in L1_KEYWORDS:
-        if keyword in lowered:
+    words = _words(text)
+    for keywords, handler in L1_KEYWORDS:
+        if words & keywords:
             return handler
+    if _ESTADO_RE.search(text.translate(_ACENTOS).lower()):
+        return handle_estado
     return None
 
 
-def route(text: str, client: ZabbixReader) -> tuple[str, str]:
-    """Devuelve (nivel, respuesta). Niveles: L0 | L1 | L2."""
+def route(text: str, client: ZabbixReader,
+          actor: str = "l2", channel: str = "lab",
+          audit_path: str = "audit.jsonl") -> tuple[str, str]:
+    """Devuelve (nivel, respuesta). Niveles: L0 | L1 | L2.
+
+    `actor`/`channel` identifican al origen real (usuario de canal) y se
+    propagan al audit. Cada decisión de routing queda registrada con su
+    nivel (arquitectura §5 → informe mensual de distribución por nivel);
+    la decisión L2 la registra `handle_l2` (así cubre también a los
+    llamadores directos).
+    """
     handler = route_l0(text)
     if handler is not None:
+        _log_route(audit_path, actor, channel, "L0", handler.__name__, text)
         return ("L0", handler(client))
     handler = classify_l1(text)
     if handler is not None:
+        _log_route(audit_path, actor, channel, "L1", handler.__name__, text)
         return ("L1", handler(client))
-    return ("L2", handle_l2(text))
+    return ("L2", handle_l2(text, actor=actor, channel=channel,
+                            audit_path=audit_path))
+
+
+def _log_route(audit_path: str, actor: str, channel: str,
+               level: str, handler_name: str, text: str) -> None:
+    log_decision(
+        audit_path, actor=actor, action="route", channel=channel,
+        result=level,
+        detail={"handler": handler_name, "text": text[:200]},
+    )
