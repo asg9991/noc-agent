@@ -53,6 +53,14 @@ mismo handler;
 resto = L2 (`l2agent`: loop con modelo por env; sin `LLM_MODEL` avisa
 en vez de romper). Solo lectura: el CLI no escribe en Zabbix.
 
+## Flujo de desarrollo
+
+`main` es estable. Cada feature vive en su rama y se integra con merge
+`--no-ff` (historia visible), tras lo cual la rama queda cerrada
+(archivada; no se borra — política local). Cada commit de trabajo lleva
+sus tests y docs, y `main` siempre queda verde: la suite completa corre
+tras cada merge.
+
 ## Next steps
 
 - [x] Canonical architecture doc migrated here from zbx-in-docker (`docs/arquitectura.md`).

@@ -225,10 +225,16 @@ outside-view del rango como slice nuevo al mergear a main (P16).
   por soporte; para borrado total hay que pedir la purga con los SHAs
   viejos (85e34fb4, bcfaf7c, 224aadc, 6ba555c3...).
 
-- [ ] **P16 · `feature/l2-local-agent` sin merge a `main`** 🟠
+- [x] **P16 · `feature/l2-local-agent` sin merge a `main`** 🟠
   20 commits (~2.5k líneas, 76 tests) esperan integración. Definir el flujo
   de branches del repo (patrón zbx-in-docker: `main` estable + ramas de
   feature que se mergean y cierran) y mergear. Verificación: `main` verde.
+  Hecho (2026-11-12): flujo definido en README §Flujo de desarrollo (main
+  estable, features merge `--no-ff`, ramas cerradas/archivadas sin borrar).
+  Merge `708114e` integra la rama completa (Fase 3: P9–P15 + verificaciones).
+  `main` verde verificado: **132 passed** tras el merge. La rama queda
+  cerrada (archivada); borrarla queda pendiente de autorización expresa
+  (política local: no borrar ramas).
 
 - [ ] **P17 · Doc de operación del hub + rotación de tokens** 🟡
   El procedimiento vive suelto en `odd/tasks/l2-local-agent.md` §Cierre.
