@@ -302,3 +302,32 @@ el `sha256` del MANIFEST antes de tocar nada (un artefacto tampered no
 restaura).
 
 Timer sugerido (junto a los de P9): semanal, después de la retención.
+
+## 13. Integridad del audit (tamper-evidence, P25)
+
+`audit.jsonl` es JSONL append-only **y encadenado**: cada línea lleva
+`prev_hash` (hash de la línea anterior) y `entry_hash` (sha256 de la línea
+en forma canónica). Modificar, borrar o insertar una línea pasada rompe la
+cadena y es detectable.
+
+```bash
+python -m l2agent.audit audit.jsonl --verify
+# exit 0: intacto y sellado
+# exit 2: íntegro pero con líneas sin sellar (historia legada → correr --seal)
+# exit 1: manipulado ("broken_line" = primera línea con problema)
+python -m l2agent.audit audit.jsonl --seal   # sella historia legada (atómico)
+```
+
+- El archivo se crea (y se normaliza) con permisos `600`.
+- `--seal` se **niega** si la cadena ya sellada está rota: sellar taparía la
+  manipulación. Investigar antes de reescribir nada.
+- Modelo de amenaza honesto: es una hash-chain **ligera** (lo que pidió P25).
+  Detecta ediciones, borrados e inserciones de cualquiera que no recalcule
+  toda la cadena. Un atacante con write sobre el archivo y la herramienta
+  podría reescribir la cadena completa: para evidencia adversarial fuerte
+  hace falta un sink externo append-only (pendiente, Fase 4).
+- Supone un solo proceso escribiendo (el loop L2); el lock del archivo cubre
+  la carrera entre hebras del mismo proceso.
+- La verificación que exige P25 ("modificar una línea pasada es detectable")
+  está cubierta por `tests/test_audit_integrity.py` (modificación, borrado,
+  inserción, sello de legado y permisos).
