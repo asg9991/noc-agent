@@ -177,6 +177,14 @@ outside-view del rango como slice nuevo al mergear a main (P16).
   Decisión del usuario (2026-11-09): en LAB los tokens quedan como están
   (aceptado); lo que tiene que quedar cristalino es la rotación para
   CLIENTES → criterio reforzado en P17.
+  Corrección (2026-11-12, detectado por el drill de P17): la ACL
+  `user:dnsmasq` **no era huérfana** — `dnsmasq` es el nombre en el host del
+  uid 999, que es el uid del servicio `zabbix-mcp` dentro del contenedor.
+  Quitarla junto al `600` dejó al hub sin poder leer su config al reiniciar
+  (EACCES + crash loop latente; solo se manifiesta al recrear el contenedor).
+  Estado correcto: `600` + ACL `u:999:r--` (aplicado en lab); ver
+  `zbx-in-docker/docs/operacion-hub.md` §Permisos del toml. Además, el
+  `api_token` de lab quedó rotado en el drill de P17 (tokenid 3 dado de baja).
 
 - [x] **P13 · Bearer en `/tmp/.mcp_bearer`** 🟡
   Aceptable en lab; `/tmp` es directorio compartido. Replantear la ubicación
@@ -236,13 +244,27 @@ outside-view del rango como slice nuevo al mergear a main (P16).
   cerrada (archivada); borrarla queda pendiente de autorización expresa
   (política local: no borrar ramas).
 
-- [ ] **P17 · Doc de operación del hub + rotación de tokens** 🟡
+- [x] **P17 · Doc de operación del hub + rotación de tokens** 🟡
   El procedimiento vive suelto en `odd/tasks/l2-local-agent.md` §Cierre.
   Pasarlo a `docs/` (operación del hub, alta/baja/rotación de tokens por
   rol). Verificación: alguien lo sigue sin leer la bitácora.
   Criterio (2026-11-09, decisión sobre P12): la rotación tiene que quedar
   cristalina para instancias de CLIENTE (en lab los tokens quedan como
   están, aceptado).
+  Hecho (2026-11-12): `zbx-in-docker/docs/operacion-hub.md` (repo genérico
+  según la regla de routing) — identidad en 3 capas, alta/baja/rotación sin
+  ventana de ciego, diagnóstico y checklist ejecutable; enlazado desde
+  `seguridad-secretos.md`. Verificación: checklist ejecutado de punta a punta
+  por el operador (sin leer la bitácora) con rotación real del `api_token`
+  del hub: `token.create`/`generate` (tokenid 4, `hub-lab-rot-20261112`) →
+  swap → smoke verde → `token.delete` del viejo (tokenid 3, `lab_hub`) →
+  smoke final verde → inventario limpio. Con esto también queda rotado el
+  `api_token` de lab que P12 dejaba pendiente. El drill detectó un bug real:
+  el `600` del P12 sin ACL para el uid del servicio (999 `zabbix-mcp`; se
+  mostraba como `dnsmasq` en el host) rompía la lectura del toml al reiniciar
+  el hub (EACCES + crash loop latente). Corregido con `setfacl -m u:999:r--`
+  y documentado en el runbook (§Permisos del toml). Rollback del runbook no
+  ejercitado (sin rojo; mismos mecanismos ya probados).
 
 - [ ] **P18 · Runbook de upgrade incompleto** 🟡
   `zbx-in-docker/docs/instalacion.md`: 3 pasos sin backup/restore/
