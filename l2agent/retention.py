@@ -11,6 +11,10 @@ auditoría 2026-09-10 marcó su ausencia como deuda):
   cuando están `inactive`. Regla dura: una observación activa jamás se borra
   (si no, el problema volvería a sonar como NUEVO).
 
+Los symlinks jamás se siguen: un artefacto symlink (o un impostor con nombre
+de rotado) se excluye de la poda, la rotación, el tope y la apertura de la
+DB, y se reporta como `skipped_symlinks`; su objetivo queda intacto.
+
 Rotar no reescribe historia: el archivo rotado queda sellado con su
 contenido completo; la poda de edad elimina únicamente lo expirado por
 política. Líneas sin `ts` parseable se conservan (borrar lo que no se
@@ -24,13 +28,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sqlite3
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from l2agent.audit import file_lock, log_decision, rechain_lines
 from l2agent.notify import _cooldown_path, _load_cooldown, _save_cooldown
 
 DEFAULT_AUDIT_DAYS = 90.0
@@ -41,9 +48,15 @@ DEFAULT_KEEP_ROTATED = 5
 
 # Nombres emitidos por la rotación: <basename>.<UTC stamp>[-N]. El patrón
 # se deriva del nombre del log para que un --audit con nombre custom también
-# gestione sus rotados (blocker S5h de la verificación de P9).
+# gestione sus rotados (blocker S5h de la verificación de P9). Los grupos de
+# captura alimentan `_rotated_key`: el orden del cap es por (stamp, n) con n
+# NUMÉRICO — el orden lexicográfico invertía Z-10 antes que Z-2 (C4).
 def _rotated_re(name: str) -> re.Pattern[str]:
-    return re.compile(re.escape(name) + r"\.\d{8}T\d{6}Z(?:-\d+)?$")
+    return re.compile(re.escape(name) + r"\.(\d{8}T\d{6}Z)(?:-(\d+))?\Z")
+
+
+def _rotated_key(match: re.Match[str]) -> tuple[str, int]:
+    return (match.group(1), int(match.group(2) or 0))
 
 
 def _cutoff(now: float, max_age_days: float) -> float:
@@ -77,19 +90,51 @@ def _outbox_ts(raw: str) -> float | None:
 
 
 def _prune_jsonl(path: Path, cutoff: float,
-                 ts_of: Callable[[str], float | None]) -> tuple[int, int]:
-    """Reescribe el archivo sin las líneas expiradas. (kept, dropped)."""
+                 ts_of: Callable[[str], float | None],
+                 rechain: bool = False,
+                 lock: bool = True) -> tuple[int, int]:
+    """Reescribe el archivo sin las líneas expiradas. (kept, dropped).
+
+    El ciclo leer-filtrar-escribir corre bajo `file_lock` (C2: una línea
+    appendeada a mitad de camino no se pierde) y la escritura es atómica
+    vía mkstemp+os.replace (un crash no trunca la historia). `lock=False`
+    cuando el llamador ya retiene el lock de la familia del log.
+    """
+    if path.is_symlink():
+        # Defensa en profundidad: jamás leer ni reescribir a través de un
+        # symlink — su objetivo vive fuera del alcance gestionado.
+        return 0, 0
     kept = dropped = 0
     out: list[str] = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        ts = ts_of(raw)
-        if ts is not None and ts < cutoff:
-            dropped += 1
-            continue
-        kept += 1
-        out.append(raw)
-    if dropped:
-        path.write_text("".join(line + "\n" for line in out), encoding="utf-8")
+
+    def _work() -> None:
+        nonlocal kept, dropped
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            ts = ts_of(raw)
+            if ts is not None and ts < cutoff:
+                dropped += 1
+                continue
+            kept += 1
+            out.append(raw)
+        if dropped:
+            new = rechain_lines(out) if rechain else out
+            fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name,
+                                       suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write("".join(line + "\n" for line in new))
+                os.chmod(tmp, 0o600)
+                os.replace(tmp, path)  # atómico
+            except BaseException:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+                raise
+
+    if lock:
+        with file_lock(path):
+            _work()
+    else:
+        _work()
     return kept, dropped
 
 
@@ -100,49 +145,89 @@ def prune_audit(path: str | Path, *,
                 now: float | None = None) -> dict[str, Any]:
     """Poda por edad y rota por tamaño el log de auditoría."""
     ts_now = time.time() if now is None else now
+    if keep_rotated < 1:
+        # keep 0 destruiría todo lo no expirado (incluido lo recién rotado):
+        # el tope mínimo es 1 — el archivo recién rotado siempre sobrevive.
+        raise ValueError("keep_rotated debe ser >= 1")
     cutoff = _cutoff(ts_now, max_age_days)
     p = Path(path)
     rotated_re = _rotated_re(p.name)
     kept = dropped = files_removed = 0
+    # Un symlink (del log vivo o con nombre de rotado) apunta a datos fuera
+    # del alcance gestionado: se excluye de todos los conjuntos y se reporta.
+    skipped: set[str] = set()
 
-    files = [p] if p.exists() else []
+    files: list[Path] = []
+    if p.is_symlink():
+        skipped.add(p.name)
+    elif p.exists():
+        files.append(p)
     if p.parent.exists():
-        files += sorted(f for f in p.parent.iterdir()
-                        if rotated_re.match(f.name))
-    for f in files:
-        k, d = _prune_jsonl(f, cutoff, _audit_ts)
-        kept += k
-        dropped += d
-        if f != p and f.stat().st_size == 0:
-            f.unlink()
-            files_removed += 1
-
+        entries = sorted((f for f in p.parent.iterdir()
+                          if rotated_re.match(f.name)),
+                         key=lambda f: _rotated_key(rotated_re.match(f.name)))
+        skipped.update(f.name for f in entries if f.is_symlink())
+        files += [f for f in entries if not f.is_symlink()]
     rotated_name = None
-    if p.exists() and p.stat().st_size > max_bytes:
-        stamp = datetime.fromtimestamp(ts_now, tz=timezone.utc
-                                       ).strftime("%Y%m%dT%H%M%SZ")
-        target = p.parent / f"{p.name}.{stamp}"
-        n = 1
-        while target.exists():
-            target = p.parent / f"{p.name}.{stamp}-{n}"
-            n += 1
-        p.rename(target)
-        rotated_name = target.name
+    # Un solo lock por familia de log (vivo + rotados): los writers del vivo
+    # se serializan con toda la poda (C2) sin sidecars por archivo rotado.
+    # Sin archivos que tocar, ni siquiera se crea el sidecar del lock (no-op
+    # puro: una corrida sobre un estado ausente no escribe nada).
+    has_work = bool(files) or any(rotated_re.match(f.name)
+                                  for f in p.parent.iterdir()) \
+        if p.parent.exists() else bool(files)
+    if has_work:
+        with file_lock(p):
+            for f in files:
+                k, d = _prune_jsonl(f, cutoff, _audit_ts, rechain=True,
+                                    lock=False)
+                kept += k
+                dropped += d
+                if f != p and not f.is_symlink() and f.stat().st_size == 0:
+                    f.unlink()
+                    files_removed += 1
 
-    if p.parent.exists():
-        rotated = sorted(f for f in p.parent.iterdir()
-                         if rotated_re.match(f.name))
-        for f in rotated[:max(0, len(rotated) - keep_rotated)]:
-            # las líneas de un archivo removido por el tope dejan de estar
-            # conservadas: el reporte debe reconciliar con el estado final
-            lines = len(f.read_text(encoding="utf-8").splitlines())
-            kept -= lines
-            dropped += lines
-            f.unlink()
-            files_removed += 1
+            if (not p.is_symlink() and p.exists()
+                    and p.stat().st_size > max_bytes):
+                stamp = datetime.fromtimestamp(
+                    ts_now, tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                target = p.parent / f"{p.name}.{stamp}"
+                n = 1
+                # ni siquiera se pisa un symlink huérfano en el destino
+                while target.exists() or target.is_symlink():
+                    target = p.parent / f"{p.name}.{stamp}-{n}"
+                    n += 1
+                p.rename(target)
+                rotated_name = target.name
+
+            if p.parent.exists():
+                rotated = sorted(
+                    (f for f in p.parent.iterdir()
+                     if rotated_re.match(f.name) and not f.is_symlink()),
+                    key=lambda f: _rotated_key(rotated_re.match(f.name)))
+                # Orden (stamp, n) numérico: los primeros son los MÁS
+                # VIEJOS. El archivo recién rotado es el último (más nuevo)
+                # y con keep>=1 siempre sobrevive a su propia run (C4/C6).
+                for f in rotated[:max(0, len(rotated) - keep_rotated)]:
+                    # las líneas de un archivo removido por el tope dejan de
+                    # estar conservadas: el reporte reconcilia con el final
+                    lines = len(f.read_text(encoding="utf-8").splitlines())
+                    kept -= lines
+                    dropped += lines
+                    f.unlink()
+                    files_removed += 1
+
+    if dropped and not p.is_symlink() and p.exists():
+        # Constancia de la mutación autorizada (C3): la poda re-ancla la
+        # cadena y lo documenta — sin esto, retención == manipulación.
+        log_decision(p, actor="retention", action="retention_prune",
+                     channel="system", result="ok",
+                     detail={"kept": kept, "dropped": dropped,
+                             "files_removed": files_removed})
 
     return {"kept": kept, "dropped": dropped, "rotated": rotated_name,
-            "files_removed": files_removed}
+            "files_removed": files_removed,
+            "skipped_symlinks": sorted(skipped)}
 
 
 def prune_outbox(path: str | Path, *,
@@ -152,17 +237,30 @@ def prune_outbox(path: str | Path, *,
     ts_now = time.time() if now is None else now
     cutoff = _cutoff(ts_now, max_age_days)
     p = Path(path)
-    kept, dropped = (0, 0) if not p.exists() else _prune_jsonl(
-        p, cutoff, _outbox_ts)
+    # Un symlink apunta fuera del alcance gestionado: no se lee ni se
+    # reescribe; se reporta.
+    skipped: set[str] = set()
+    if p.is_symlink():
+        skipped.add(p.name)
+        kept, dropped = 0, 0
+    else:
+        kept, dropped = (0, 0) if not p.exists() else _prune_jsonl(
+            p, cutoff, _outbox_ts)
 
-    cooled = _load_cooldown(_cooldown_path(p))
-    fresh = {k: v for k, v in cooled.items() if v >= cutoff}
-    cooldown_dropped = len(cooled) - len(fresh)
-    if cooldown_dropped:
-        _save_cooldown(_cooldown_path(p), fresh)
+    cooldown_dropped = 0
+    cpath = _cooldown_path(p)
+    if cpath is not None and cpath.is_symlink():
+        skipped.add(cpath.name)
+    else:
+        cooled = _load_cooldown(cpath)
+        fresh = {k: v for k, v in cooled.items() if v >= cutoff}
+        cooldown_dropped = len(cooled) - len(fresh)
+        if cooldown_dropped:
+            _save_cooldown(cpath, fresh)
 
     return {"kept": kept, "dropped": dropped,
-            "cooldown_dropped": cooldown_dropped}
+            "cooldown_dropped": cooldown_dropped,
+            "skipped_symlinks": sorted(skipped)}
 
 
 def prune_db(db_path: str | Path, *,
@@ -176,8 +274,14 @@ def prune_db(db_path: str | Path, *,
     ts_now = time.time() if now is None else now
     cutoff = _cutoff(ts_now, max_age_days)
     p = Path(db_path)
+    if p.is_symlink():
+        # sqlite3.connect seguiría el symlink y haría DELETE/VACUUM sobre la
+        # base objetivo: se excluye sin abrir y se reporta.
+        return {"sweeps_dropped": 0, "observations_dropped": 0,
+                "skipped_symlinks": [p.name]}
     if not p.exists():
-        return {"sweeps_dropped": 0, "observations_dropped": 0}
+        return {"sweeps_dropped": 0, "observations_dropped": 0,
+                "skipped_symlinks": []}
     conn = sqlite3.connect(p)
     try:
         sweeps = conn.execute(
@@ -190,7 +294,8 @@ def prune_db(db_path: str | Path, *,
             conn.execute("VACUUM")
     finally:
         conn.close()
-    return {"sweeps_dropped": sweeps, "observations_dropped": obs}
+    return {"sweeps_dropped": sweeps, "observations_dropped": obs,
+            "skipped_symlinks": []}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -222,6 +327,9 @@ def main(argv: list[str] | None = None) -> int:
                       ("--keep", args.keep)):
         if val < 0:
             parser.error(f"{flag} no puede ser negativo")
+    if args.keep < 1:
+        parser.error("--keep debe ser >= 1 (el recién rotado siempre "
+                     "sobrevive a su propia run)")
     report = {
         "audit": prune_audit(args.audit, max_age_days=args.days,
                              max_bytes=args.max_bytes,
