@@ -26,6 +26,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from l2agent.audit import file_lock
+
 DEFAULT_MIN_SEVERITY = "High"
 DEFAULT_COOLDOWN_S = 24 * 3600  # un evento no re-alarma en 24h
 
@@ -128,9 +130,10 @@ def decide(sweep_result: dict[str, Any],
     if alarms and outbox_path is not None:
         out = Path(outbox_path)
         out.parent.mkdir(parents=True, exist_ok=True)
-        with out.open("a", encoding="utf-8") as fh:
-            for a in alarms:
-                fh.write(json.dumps(a, ensure_ascii=False) + "\n")
+        with file_lock(out):  # serializa con la poda del outbox (C2)
+            with out.open("a", encoding="utf-8") as fh:
+                for a in alarms:
+                    fh.write(json.dumps(a, ensure_ascii=False) + "\n")
     if dirty:
         _save_cooldown(cpath, cooled)
     return {"alarms": alarms, "digest": digest}

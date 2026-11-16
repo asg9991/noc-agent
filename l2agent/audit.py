@@ -15,9 +15,30 @@ import hashlib
 import json
 import os
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
+
+
+@contextmanager
+def file_lock(path: str | Path) -> Iterator[None]:
+    """Lock cooperativo por archivo (sidecar `<path>.lock`, flock exclusivo).
+
+    Lo usan los writers (`log_decision`, outbox) y la poda/rotación para
+    serializar el ciclo leer-modificar-escribir: sin él, una línea
+    appendeada durante la poda se pierde en el rewrite. El lock vive en un
+    sidecar porque el rewrite reemplaza el inodo del archivo de datos.
+    """
+    lock_path = Path(str(path) + ".lock")
+    # O_NOFOLLOW (R2): un symlink plantado en el sidecar jamás se sigue —
+    # fallar es mejor que escribir fuera del alcance gestionado.
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
 
 
 def _canonical(record: dict[str, Any]) -> bytes:
@@ -74,17 +95,79 @@ def log_decision(
     }
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(p, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o600)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)  # serializa writers (hebras/procesos)
-        os.fchmod(fd, 0o600)  # permisos estrictos (P25), también en legados
-        record["prev_hash"] = _tail_hash(p)
-        record["entry_hash"] = _entry_hash(record)
-        os.write(fd, (json.dumps(record, ensure_ascii=False) + "\n")
-                 .encode("utf-8"))
-    finally:
-        os.close(fd)  # close libera el lock
+    with file_lock(p):  # serializa con la poda y con otros writers
+        fd = os.open(p, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            os.fchmod(fd, 0o600)  # permisos estrictos (P25), también legados
+            record["prev_hash"] = _tail_hash(p)
+            record["entry_hash"] = _entry_hash(record)
+            os.write(fd, (json.dumps(record, ensure_ascii=False) + "\n")
+                     .encode("utf-8"))
+        finally:
+            os.close(fd)
     return record
+
+
+def assert_chain_intact(lines: list[str]) -> None:
+    """A-1: valida la cadena COMPLETA pre-poda y falla ante manipulación.
+
+    El discriminador legítimo/tamperado es la cadena ANTES de podar: un
+    archivo sano valida entero (los gaps que crea la propia poda no cuentan).
+    Falla con contenido tamperado (entry_hash ≠ recompute) o eslabón perdido
+    (borrado o reorden). Líneas basura/legado no cuentan — no son
+    launables, verify_audit las sigue marcando.
+    """
+    prev = ""
+    for raw in lines:
+        if not raw.strip():
+            continue  # A-2: verify_audit la salta sin reiniciar el ancla
+        try:
+            record = json.loads(raw)
+        except json.JSONDecodeError:
+            continue  # basura: se conserva, no se lava
+        if isinstance(record, dict) and "entry_hash" in record:
+            if record.get("entry_hash") != _entry_hash(record):
+                raise ValueError(
+                    "cadena rota (contenido tamperado): la retención se "
+                    "niega a re-hashear — investigar con --verify")
+            if record.get("prev_hash") != prev:
+                raise ValueError(
+                    "cadena rota (eslabón perdido: borrado o reorden): la "
+                    "retención se niega a re-hashear — investigar con "
+                    "--verify")
+            prev = str(record["entry_hash"])
+        else:
+            prev = ""
+
+
+def rechain_lines(lines: list[str]) -> list[str]:
+    """Re-ancla la cadena de integridad sobre las líneas conservadas.
+
+    Migración autorizada (la retención borra líneas y el eslabón siguiente
+    quedaría roto). La validación de manipulación previa vive en
+    `assert_chain_intact` (sobre la cadena completa pre-poda) — acá solo se
+    re-ancla. Líneas basura/legado se conservan tal cual.
+    """
+    out: list[str] = []
+    prev = ""
+    for raw in lines:
+        if not raw.strip():
+            out.append(raw)  # A-2: verify_audit la salta sin reiniciar el
+            continue         # ancla — misma semántica acá
+        try:
+            record = json.loads(raw)
+        except json.JSONDecodeError:
+            out.append(raw)  # basura: se conserva, verify la sigue marcando
+            continue
+        if isinstance(record, dict) and "entry_hash" in record:
+            record["prev_hash"] = prev
+            record["entry_hash"] = _entry_hash(record)
+            prev = str(record["entry_hash"])
+            out.append(json.dumps(record, ensure_ascii=False))
+        else:
+            out.append(raw)
+            prev = ""
+    return out
 
 
 def verify_audit(path: str | Path) -> dict[str, Any]:
