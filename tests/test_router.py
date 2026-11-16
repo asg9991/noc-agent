@@ -336,3 +336,24 @@ def test_route_propaga_role_y_on_denied(tmp_path, monkeypatch):
                      audit_path=str(tmp_path / "a.jsonl"))
     assert level == "L2"
     assert seen["role"] == "technician" and seen["on_denied"] is not None
+
+
+def test_min_interval_malo_igual_deja_traza(tmp_path, monkeypatch):
+    """B-5+B-10: el fallo de configuración también es decisión registrada."""
+    from l2agent.main import main as l2main
+    monkeypatch.setenv("LLM_MODEL", "m")
+    monkeypatch.setenv("LLM_MIN_INTERVAL_S", "no-numero")
+    log = tmp_path / "audit.jsonl"
+    with pytest.raises(SystemExit) as exc:
+        l2main(["objetivo", "--audit", str(log)])
+    assert exc.value.code == 2
+    assert '"route"' in log.read_text(encoding="utf-8")
+
+
+def test_identidad_parcial_o_vacia_tambien_es_typeerror():
+    """B-7: ni actor sin channel ni cadena vacía fabrican identidad."""
+    from agent.router import route
+    with pytest.raises(TypeError):
+        route("estado", FakeClient(), actor="ana")
+    with pytest.raises(TypeError):
+        route("estado", FakeClient(), actor="", channel="lab")

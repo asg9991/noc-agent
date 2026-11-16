@@ -137,3 +137,35 @@ def test_initialize_no_traga_errores_jsonrpc():
     c = MCPClient(url="http://hub", transport=_ErrTransport())
     with pytest.raises(RuntimeError, match="unauthorized"):
         c.initialize()
+
+
+def test_sse_notificacion_previa_no_opaca_resultado():
+    """B-1: orden inverso también devuelve el resultado."""
+    text = ('data: {"jsonrpc":"2.0","method":"notifications/progress"}\n\n'
+            'data: {"jsonrpc":"2.0","id":1,"result":{"ok":1}}\n\n')
+    assert _extract_jsonrpc(text).get("result") == {"ok": 1}
+
+
+def test_sse_crlf_y_primera_respuesta_gana():
+    """B-1: eventos CRLF y preferencia por el primer envelope de respuesta."""
+    text = ('data: {"jsonrpc":"2.0","id":1,"result":3}\r\n\r\n'
+            'data: {"jsonrpc":"2.0","id":1,"error":{"code":-1,"message":"x"}}\r\n\r\n')
+    assert _extract_jsonrpc(text)["result"] == 3
+
+
+def test_sse_datos_malformados_o_no_dict_fallan_loud():
+    """B-1: sin envelope de respuesta utilizable, nunca None silencioso."""
+    with pytest.raises(RuntimeError):
+        _extract_jsonrpc("data: not-json\n\n")
+    with pytest.raises(RuntimeError):
+        _extract_jsonrpc("data: [1,2]\n\n")
+
+
+def test_initialize_ok_devuelve_sesion():
+    """B-2 (regresión): el camino de éxito sigue devolviendo la sesión."""
+    class _OkTransport:
+        def post(self, url, json=None, headers=None):
+            return _FakeResp('{"jsonrpc":"2.0","id":1,"result":{"ok":true}}',
+                             {"Mcp-Session-Id": "sess-1"})
+    c = MCPClient(url="http://hub", transport=_OkTransport())
+    assert c.initialize() == "sess-1"

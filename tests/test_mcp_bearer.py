@@ -72,3 +72,28 @@ def test_path_configurado_ilegible_avisa(tmp_path, capsys, monkeypatch):
     monkeypatch.delenv("MCP_BEARER", raising=False)
     assert resolve_bearer() == ""
     assert "no se pudo leer" in capsys.readouterr().err
+
+
+def test_bearer_600_no_avisa(tmp_path, capsys, monkeypatch):
+    """B-3: solo los permisos abiertos generan aviso (600 queda en silencio)."""
+    from agent.mcp_client import resolve_bearer
+    f = tmp_path / "bearer"
+    f.write_text("secreto123", encoding="utf-8")
+    f.chmod(0o600)
+    monkeypatch.setenv("MCP_BEARER_FILE", str(f))
+    monkeypatch.delenv("MCP_BEARER", raising=False)
+    assert resolve_bearer() == "secreto123"
+    assert capsys.readouterr().err == ""
+
+
+def test_bearer_ilegible_devuelve_vacio_sin_excepcion(tmp_path, capsys,
+                                                      monkeypatch):
+    """B-4: chmod 000 jamás explota: '' + aviso."""
+    from agent.mcp_client import resolve_bearer
+    f = tmp_path / "bearer"
+    f.write_text("x", encoding="utf-8")
+    f.chmod(0o000)
+    monkeypatch.setenv("MCP_BEARER_FILE", str(f))
+    monkeypatch.delenv("MCP_BEARER", raising=False)
+    assert resolve_bearer() == ""
+    assert "no se pudo leer" in capsys.readouterr().err
