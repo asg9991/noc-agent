@@ -72,3 +72,21 @@ regla del skill las sospechas no se auto-corrigen: requieren decisión
 explícita del usuario. El branch NO se mergea a main hasta esa decisión
 (el fix intercambia el falso-alarma de C3 por el laundering de A-1 si se
 mergea sin corregir).
+
+## Cierre de sospechas (autorización del usuario, 2026-11-13)
+
+El usuario autorizó corregir TODAS las sospechas. Batch `7d52b6f` + `015c43c`:
+A-1 (validación de cadena **pre-poda** completa — los gaps de la poda son
+legítimos, la manipulación previa bloquea), A-2 (blancos no reinician el
+ancla), B-3 (test CLI corregido), R2 (O_NOFOLLOW en el sidecar), R3
+(constancia no nombra segmentos destruidos; `cap_removed`), S2 (split solo
+por "\n"; registros con U+2028 intactos), S3 (ventana negativa rechazada),
+S4 (aislamiento por artefacto; rc=1; reporte siempre impreso) y **cap de
+tamaño para outbox** (cola acotada, `overflow_dropped`, lo más viejo primero
+— pregunta del usuario: "¿no necesitan cap también?").
+
+Vista externa (F1): verificador independiente sobre el batch → **1 blocker**
+(B1: la primera guard de A-1 confundía los gaps de la poda legítima con
+borrados; rechazaba la retención sana) + tests vacíos detectados. Corregido
+en `015c43c` con validación pre-poda + tests durables probe-validados.
+Recheck limitado a los blockers: verde. Suite: **166 passed**.
