@@ -867,3 +867,38 @@ def test_cap_outbox_limites_exactos_y_cli(tmp_path, capsys):
     assert rc == 0
     assert report["outbox"]["overflow_dropped"] > 0
     assert out.stat().st_size <= 1000
+
+
+
+# --- Pre-existentes A2/A4 (autorización del usuario, 2026-11-13) ---
+
+
+def test_a2_cap_cuenta_destruidos_con_u2028(tmp_path):
+    """A2: el conteo de líneas de un archivo destruido por el cap parte solo
+    por \n (un registro con U+2028 cuenta 1, no 2)."""
+    from l2agent.audit import log_decision as ld, split_record_lines
+    log = tmp_path / "audit.jsonl"
+    ld(log, actor="a", action="x", channel="lab", result="ok",
+       detail={"q": "a\u2028b"})  # el vivo: registro con U+2028 (1 línea)
+    # un rotado con U+2028 que el cap va a DESTRUIR + dos rotados comunes
+    (tmp_path / "audit.jsonl.20260101T000000Z").write_text(
+        '{"ts": "2026-11-13T00:00:00+00:00", "q": "a\u2028b"}\n',
+        encoding="utf-8")
+    for d in ("20260102", "20260103"):
+        (tmp_path / f"audit.jsonl.{d}T000000Z").write_text(
+            _audit_line(_iso(NOW)) + "\n", encoding="utf-8")
+    r = retention.prune_audit(log, max_age_days=90, keep_rotated=1, now=NOW)
+    assert r["files_removed"] == 2  # destruye 20260101 (U+2028) y 20260102
+    # si el destruido con U+2028 contara 2 líneas: kept=1, dropped=3
+    assert r["kept"] == 2 and r["dropped"] == 2
+
+
+def test_a4_linea_oversized_no_vacia_la_cola(tmp_path):
+    """A4: una sola línea más grande que el tope se conserva — la cola no se
+    vacía nunca; perder lo más nuevo es peor que desbordar."""
+    log = tmp_path / "outbox.jsonl"
+    huge = json.dumps({"ts": NOW, "id": 0, "pad": "x" * 5000}) + "\n"
+    log.write_text(huge, encoding="utf-8")
+    r = retention.prune_outbox(log, max_age_days=90, now=NOW, max_bytes=100)
+    assert r["overflow_dropped"] == 0
+    assert log.read_text(encoding="utf-8") == huge

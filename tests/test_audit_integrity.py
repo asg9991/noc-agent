@@ -163,3 +163,35 @@ def test_append_concurrente_no_rompe_la_cadena(tmp_path):
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert verify_audit(log)["ok"] is True
+
+
+# --- Pre-existentes A3 (autorización del usuario, 2026-11-13) ---
+
+
+def test_a3_verify_no_falsa_manipulacion_con_u2028(tmp_path):
+    """A3: un registro legítimo con U+2028 NO es manipulación — verify debe
+    dar verde y routing_report debe contarlo."""
+    from l2agent.audit import log_decision, routing_report, verify_audit
+    log = tmp_path / "audit.jsonl"
+    log_decision(log, actor="ana", action="route", channel="lab",
+                 result="L1", detail={"handler": "responder x"})
+    v = verify_audit(log)
+    assert v["ok"] is True, f"falso positivo de manipulación: {v}"
+    r = routing_report(log)
+    assert r["total"] == 1 and r["levels"] == {"L1": 1}
+
+
+@pytest.mark.parametrize("sep", ["\u2028", "\u2029", "\u0085"])
+def test_seal_no_torna_registros_con_separadores_unicode(tmp_path, sep):
+    """seal_audit parte solo por \\n (S2/A3): un registro legado con
+    U+2028/U+2029/U+0085 se sella completo, sin error de cadena ni JSON."""
+    from l2agent.audit import seal_audit, verify_audit
+    log = tmp_path / "legacy.jsonl"
+    rec = {"ts": "2026-11-13T00:00:00+00:00", "actor": "a",
+           "action": "route", "channel": "lab", "result": "L1",
+           "detail": {"handler": "h" + sep + "x"}}
+    log.write_text(json.dumps(rec, ensure_ascii=False) + "\n",
+                   encoding="utf-8")
+    result = seal_audit(log)
+    assert result["ok"] is True and result["sealed"] == 1
+    assert verify_audit(log)["ok"] is True
