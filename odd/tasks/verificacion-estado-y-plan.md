@@ -80,6 +80,13 @@ Casos adversariales **por defecto** en todo suite nueva: entradas malformadas,
 concurrencia, combinaciones de flags, permisos, límites. Diferencial contra
 el commit base por work unit, registrado en el log. Un test verde deja de ser
 evidencia de seguridad por sí solo.
+**Regla de "no islas" (2026-11-13, decisión del usuario)**: ninguna feature
+se construye como isla. Antes de implementar una feature que muta estado
+compartido (`audit.jsonl`, `watch.db`, `outbox.jsonl`, config montada), hay
+que **enumerar todos los demás mutadores** de ese estado y agregar tests de
+costura que cubran la interacción (el caso P9×P25 es el ejemplo fundante:
+retención + hash-chain = falso positivo de manipulación). La documentación de
+cada feature nueva se cruza con la de las features que tocan el mismo estado.
 
 **F5 · Honestidad documental**
 Todo claim de un mecanismo en docs se marca con el commit que lo implementa.
