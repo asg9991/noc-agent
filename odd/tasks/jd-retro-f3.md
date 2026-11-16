@@ -130,3 +130,20 @@ Target: `main@0f3a8b9` — `agent/router.py`, `agent/mcp_client.py`,
 **JUDGMENT: APPROVED ✅** — 0 hallazgos severos; los contratos de identidad
 se sostienen. 10 filas INFO (4 corroboradas + 6 individuales) quedan a
 decisión del usuario. Sin rounds de fix, sin re-juicio necesario.
+
+## Cierre de las 10 filas info de JD#2 (autorización del usuario)
+
+Batch `8b606f6` + probes: SSE por eventos con preferencia del envelope de
+respuesta (una notificación posterior ya no se come el resultado; sin
+envelope = error loud), `initialize()` no traga errores JSON-RPC, bearer con
+avisos (permisos abiertos / path configurado ilegible), traza CLI antes de
+construir modelo/cliente, `LLM_MIN_INTERVAL_S` con error amable,
+`actor_source` (cli/env/kernel/fallback) en el audit, identidad obligatoria
+en `route()`/`handle_l2` (TypeError — sin defaults fabricados), conteos
+truncados como `N+`, `role`/`on_denied` propagados, empate L1 declarado hacia
+estado. Doc drift corregido (runbook §4: `pwd.getpwuid`).
+
+Vista externa (F1): verificador independiente — **10/10 áreas MET, 0
+blockers** (55 probes). Advisories anotados: `run_loop()` aún tiene defaults
+`actor="l2"` (una capa más abajo del alcance de B-7) — queda registrado.
+Suite: **193 passed**.
