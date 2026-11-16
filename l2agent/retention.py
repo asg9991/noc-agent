@@ -217,13 +217,16 @@ def prune_audit(path: str | Path, *,
                     f.unlink()
                     files_removed += 1
 
-    if dropped and not p.is_symlink() and p.exists():
-        # Constancia de la mutación autorizada (C3): la poda re-ancla la
-        # cadena y lo documenta — sin esto, retención == manipulación.
+    if dropped and not p.is_symlink():
+        # Constancia de la mutación autorizada (C3/R1): la poda re-ancla la
+        # cadena y lo documenta. Se escribe SIEMPRE que hubo drops — también
+        # cuando esta misma run rotó el vivo (p ya no existe tras el rename:
+        # log_decision lo crea) o cuando los drops fueron solo en rotados.
         log_decision(p, actor="retention", action="retention_prune",
                      channel="system", result="ok",
                      detail={"kept": kept, "dropped": dropped,
-                             "files_removed": files_removed})
+                             "files_removed": files_removed,
+                             "rotated": rotated_name})
 
     return {"kept": kept, "dropped": dropped, "rotated": rotated_name,
             "files_removed": files_removed,

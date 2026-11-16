@@ -274,11 +274,14 @@ def test_reporte_lo_conservado_igual_a_lo_que_queda_tras_desborde(tmp_path):
     log = tmp_path / "audit.jsonl"
     log.write_text(_audit_line(_iso(NOW)) + "\n", encoding="utf-8")
     before = sum(len(p.read_text(encoding="utf-8").splitlines())
-                 for p in tmp_path.glob("audit.jsonl*"))
+                 for p in tmp_path.glob("audit.jsonl*")
+                 if p.suffix != ".lock")
     r = retention.prune_audit(log, max_age_days=90, max_bytes=10,
                               keep_rotated=2, now=NOW)
-    after = sum(len(p.read_text(encoding="utf-8").splitlines())
-                for p in tmp_path.glob("audit.jsonl*"))
+    after = sum(len([x for x in p.read_text(encoding="utf-8").splitlines()
+                     if '"retention_prune"' not in x])
+                for p in tmp_path.glob("audit.jsonl*")
+                if p.suffix != ".lock")
     assert r["kept"] + r["dropped"] == before
     assert r["kept"] == after, "lo conservado debe ser lo que queda en disco"
 
@@ -617,3 +620,21 @@ def test_c6_keep_cero_es_invalido(tmp_path):
 def _future_days(d: float) -> float:
     import time as _t
     return _t.time() + d * 86400.0
+
+
+def test_r1_constancia_incluso_cuando_rota_en_la_misma_corrida(tmp_path):
+    """R1: si la run rota Y poda, la constancia retention_prune igual se
+    escribe (la mutación masiva jamás queda sin registro)."""
+    log = tmp_path / "audit.jsonl"
+    old = _audit_line(_iso(NOW - 200 * DAY))
+    fresh = _audit_line(_iso(NOW))
+    log.write_text(old + "\n" + old + "\n" + fresh + "\n" + fresh + "\n",
+                   encoding="utf-8")
+    r = retention.prune_audit(log, max_age_days=90, max_bytes=10,
+                              keep_rotated=1, now=NOW)
+    assert r["dropped"] >= 1 and r["rotated"] is not None
+    records = [json.loads(x) for x in
+               log.read_text(encoding="utf-8").splitlines()
+               if '"retention_prune"' in x]
+    assert records, "falta la constancia tras rotar+podar en la misma run"
+    assert records[0]["detail"]["rotated"] == r["rotated"]
