@@ -239,7 +239,7 @@ def seal_audit(path: str | Path) -> dict[str, Any]:
             "una manipulación — investigar antes de continuar")
     if not p.exists() or v["sealed"] == 0 and v["unsealed"] == 0:
         return v
-    lines = [x for x in p.read_text(encoding="utf-8").splitlines()
+    lines = [x for x in split_record_lines(p.read_text(encoding="utf-8"))
              if x.strip()]
     sealed: list[str] = []
     prev = ""
