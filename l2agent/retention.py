@@ -89,6 +89,21 @@ def _outbox_ts(raw: str) -> float | None:
         return None
 
 
+def _write_lines_atomic(path: Path, lines: list[str]) -> None:
+    """Escritura atómica: mkstemp + os.replace (un crash no trunca)."""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name,
+                               suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write("".join(line + "\n" for line in lines))
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)  # atómico
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
 def _prune_jsonl(path: Path, cutoff: float,
                  ts_of: Callable[[str], float | None],
                  rechain: bool = False,
@@ -109,7 +124,13 @@ def _prune_jsonl(path: Path, cutoff: float,
 
     def _work() -> None:
         nonlocal kept, dropped
-        for raw in path.read_text(encoding="utf-8").splitlines():
+        text = path.read_text(encoding="utf-8")
+        # S2: partir SOLO por "\n" — str.splitlines() también corta en
+        # U+2028/U+2029/U+0085 y partiría registros conservados en dos.
+        raw_lines = text.split("\n")
+        if raw_lines and raw_lines[-1] == "":
+            raw_lines.pop()  # newline final
+        for raw in raw_lines:
             ts = ts_of(raw)
             if ts is not None and ts < cutoff:
                 dropped += 1
@@ -117,18 +138,10 @@ def _prune_jsonl(path: Path, cutoff: float,
             kept += 1
             out.append(raw)
         if dropped:
+            # A-1 vive en rechain_lines: se niega a re-hashear si el archivo
+            # muestra manipulación previa (hash falso o eslabón perdido).
             new = rechain_lines(out) if rechain else out
-            fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name,
-                                       suffix=".tmp")
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    fh.write("".join(line + "\n" for line in new))
-                os.chmod(tmp, 0o600)
-                os.replace(tmp, path)  # atómico
-            except BaseException:
-                if os.path.exists(tmp):
-                    os.unlink(tmp)
-                raise
+            _write_lines_atomic(path, new)
 
     if lock:
         with file_lock(path):
@@ -149,6 +162,10 @@ def prune_audit(path: str | Path, *,
         # keep 0 destruiría todo lo no expirado (incluido lo recién rotado):
         # el tope mínimo es 1 — el archivo recién rotado siempre sobrevive.
         raise ValueError("keep_rotated debe ser >= 1")
+    if max_age_days < 0:
+        # S3: una ventana negativa ubicaría el cutoff en el futuro y borraría
+        # todo lo vigente — la biblioteca protege igual que el CLI.
+        raise ValueError("max_age_days debe ser >= 0")
     cutoff = _cutoff(ts_now, max_age_days)
     p = Path(path)
     rotated_re = _rotated_re(p.name)
@@ -169,6 +186,7 @@ def prune_audit(path: str | Path, *,
         skipped.update(f.name for f in entries if f.is_symlink())
         files += [f for f in entries if not f.is_symlink()]
     rotated_name = None
+    cap_removed: list[str] = []
     # Un solo lock por familia de log (vivo + rotados): los writers del vivo
     # se serializan con toda la poda (C2) sin sidecars por archivo rotado.
     # Sin archivos que tocar, ni siquiera se crea el sidecar del lock (no-op
@@ -203,11 +221,15 @@ def prune_audit(path: str | Path, *,
             if p.parent.exists():
                 rotated = sorted(
                     (f for f in p.parent.iterdir()
-                     if rotated_re.match(f.name) and not f.is_symlink()),
+                     if rotated_re.match(f.name) and f.is_file()
+                     and not f.is_symlink()),
                     key=lambda f: _rotated_key(rotated_re.match(f.name)))
                 # Orden (stamp, n) numérico: los primeros son los MÁS
                 # VIEJOS. El archivo recién rotado es el último (más nuevo)
-                # y con keep>=1 siempre sobrevive a su propia run (C4/C6).
+                # y con keep>=1 siempre sobrevive a su propia run (C4/C6) —
+                # salvo relojes no-monotónicos, y por eso la constancia no
+                # nombra como vivo a un segmento destruido (R3).
+                cap_removed: list[str] = []  # (se reinicia en cada run)
                 for f in rotated[:max(0, len(rotated) - keep_rotated)]:
                     # las líneas de un archivo removido por el tope dejan de
                     # estar conservadas: el reporte reconcilia con el final
@@ -215,6 +237,7 @@ def prune_audit(path: str | Path, *,
                     kept -= lines
                     dropped += lines
                     f.unlink()
+                    cap_removed.append(f.name)
                     files_removed += 1
 
     if dropped and not p.is_symlink():
@@ -222,11 +245,15 @@ def prune_audit(path: str | Path, *,
         # cadena y lo documenta. Se escribe SIEMPRE que hubo drops — también
         # cuando esta misma run rotó el vivo (p ya no existe tras el rename:
         # log_decision lo crea) o cuando los drops fueron solo en rotados.
+        rotated_live = (rotated_name
+                        if rotated_name and rotated_name not in cap_removed
+                        else None)  # R3: no nombrar segmentos destruidos
         log_decision(p, actor="retention", action="retention_prune",
                      channel="system", result="ok",
                      detail={"kept": kept, "dropped": dropped,
                              "files_removed": files_removed,
-                             "rotated": rotated_name})
+                             "rotated": rotated_live,
+                             "cap_removed": cap_removed})
 
     return {"kept": kept, "dropped": dropped, "rotated": rotated_name,
             "files_removed": files_removed,
@@ -235,9 +262,18 @@ def prune_audit(path: str | Path, *,
 
 def prune_outbox(path: str | Path, *,
                  max_age_days: float = DEFAULT_OUTBOX_DAYS,
+                 max_bytes: int = DEFAULT_MAX_BYTES,
                  now: float | None = None) -> dict[str, Any]:
-    """Poda el outbox de transporte y su estado de cooldown."""
+    """Poda el outbox de transporte y su estado de cooldown.
+
+    Además de la edad, la cola queda **acotada por tamaño**: bajo
+    inundación se descarta lo más viejo primero (`overflow_dropped`) — el
+    outbox es una cola, no un archivo histórico; su límite natural es el
+    tamaño, no la rotación.
+    """
     ts_now = time.time() if now is None else now
+    if max_age_days < 0:
+        raise ValueError("max_age_days debe ser >= 0")
     cutoff = _cutoff(ts_now, max_age_days)
     p = Path(path)
     # Un symlink apunta fuera del alcance gestionado: no se lee ni se
@@ -249,6 +285,19 @@ def prune_outbox(path: str | Path, *,
     else:
         kept, dropped = (0, 0) if not p.exists() else _prune_jsonl(
             p, cutoff, _outbox_ts)
+
+    overflow_dropped = 0
+    if not p.is_symlink() and p.exists() and p.stat().st_size > max_bytes:
+        with file_lock(p):
+            text = p.read_text(encoding="utf-8")
+            lines = text.split("\n")
+            if lines and lines[-1] == "":
+                lines.pop()
+            while (lines
+                   and len("".join(x + "\n" for x in lines)) > max_bytes):
+                lines.pop(0)  # la cola se appendea: lo primero es lo más viejo
+                overflow_dropped += 1
+            _write_lines_atomic(p, lines)
 
     cooldown_dropped = 0
     cpath = _cooldown_path(p)
@@ -263,6 +312,7 @@ def prune_outbox(path: str | Path, *,
 
     return {"kept": kept, "dropped": dropped,
             "cooldown_dropped": cooldown_dropped,
+            "overflow_dropped": overflow_dropped,
             "skipped_symlinks": sorted(skipped)}
 
 
@@ -275,6 +325,8 @@ def prune_db(db_path: str | Path, *,
     taxonomía NUEVO/RECURRENTE y borrarla re-alaría problemas vivos.
     """
     ts_now = time.time() if now is None else now
+    if max_age_days < 0:
+        raise ValueError("max_age_days debe ser >= 0")
     cutoff = _cutoff(ts_now, max_age_days)
     p = Path(db_path)
     if p.is_symlink():
@@ -320,6 +372,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="ventana de retención de la DB (días)")
     parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES,
                         help="tamaño que dispara la rotación del audit")
+    parser.add_argument("--outbox-max-bytes", type=int,
+                        default=DEFAULT_MAX_BYTES,
+                        help="tamaño máximo del outbox (cola acotada)")
     parser.add_argument("--keep", type=int, default=DEFAULT_KEEP_ROTATED,
                         help="archivos rotados conservados")
     parser.add_argument("--now", type=float, default=None,
@@ -327,22 +382,34 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     for flag, val in (("--days", args.days), ("--outbox-days", args.outbox_days),
                       ("--db-days", args.db_days), ("--max-bytes", args.max_bytes),
+                      ("--outbox-max-bytes", args.outbox_max_bytes),
                       ("--keep", args.keep)):
         if val < 0:
             parser.error(f"{flag} no puede ser negativo")
     if args.keep < 1:
         parser.error("--keep debe ser >= 1 (el recién rotado siempre "
                      "sobrevive a su propia run)")
+    # S4: cada artefacto se procesa aislado — uno corrupto no saltea los
+    # demás ni se come el reporte (la evidencia de mantenimiento es ley).
+    def _run(label: str, fn) -> dict[str, Any]:
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001 — el reporte manda
+            return {"error": f"{type(exc).__name__}: {exc}"}
+
     report = {
-        "audit": prune_audit(args.audit, max_age_days=args.days,
-                             max_bytes=args.max_bytes,
-                             keep_rotated=args.keep, now=args.now),
-        "outbox": prune_outbox(args.outbox, max_age_days=args.outbox_days,
-                               now=args.now),
-        "db": prune_db(args.db, max_age_days=args.db_days, now=args.now),
+        "audit": _run("audit", lambda: prune_audit(
+            args.audit, max_age_days=args.days,
+            max_bytes=args.max_bytes, keep_rotated=args.keep,
+            now=args.now)),
+        "outbox": _run("outbox", lambda: prune_outbox(
+            args.outbox, max_age_days=args.outbox_days,
+            max_bytes=args.outbox_max_bytes, now=args.now)),
+        "db": _run("db", lambda: prune_db(
+            args.db, max_age_days=args.db_days, now=args.now)),
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0
+    return 1 if any("error" in v for v in report.values()) else 0
 
 
 if __name__ == "__main__":

@@ -31,7 +31,9 @@ def file_lock(path: str | Path) -> Iterator[None]:
     sidecar porque el rewrite reemplaza el inodo del archivo de datos.
     """
     lock_path = Path(str(path) + ".lock")
-    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    # O_NOFOLLOW (R2): un symlink plantado en el sidecar jamás se sigue —
+    # fallar es mejor que escribir fuera del alcance gestionado.
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         yield
@@ -110,21 +112,33 @@ def rechain_lines(lines: list[str]) -> list[str]:
     """Re-ancla la cadena de integridad sobre las líneas encadenadas.
 
     Migración autorizada: la retención borra líneas expiradas y el eslabón
-    siguiente quedaría roto (falso positivo de manipulación). Re-hashear es
-    legítimo solo para la retención — queda constancia en el audit con
-    `retention_prune`. Líneas sin sellar quedan intactas y reinician la
-    cadena (misma semántica que `verify_audit`).
+    siguiente quedaría roto (falso positivo de manipulación). Se NIEGA a
+    re-hashear si detecta manipulación previa (A-1): contenido tamperado
+    (entry_hash no coincide con su recompute) o eslabón perdido (borrado o
+    reorden). Líneas basura/legado se conservan tal cual — verify_audit
+    sigue marcándolas, la retención no las lava.
     """
     out: list[str] = []
     prev = ""
     for raw in lines:
+        if not raw.strip():
+            out.append(raw)  # A-2: verify_audit la salta sin reiniciar el
+            continue         # ancla — misma semántica acá
         try:
             record = json.loads(raw)
         except json.JSONDecodeError:
-            out.append(raw)
-            prev = ""
+            out.append(raw)  # basura: se conserva, verify la sigue marcando
             continue
         if isinstance(record, dict) and "entry_hash" in record:
+            if record.get("entry_hash") != _entry_hash(record):
+                raise ValueError(
+                    "cadena rota (contenido tamperado): la retención se "
+                    "niega a re-hashear — investigar con --verify")
+            if record.get("prev_hash") != prev:
+                raise ValueError(
+                    "cadena rota (eslabón perdido: borrado o reorden): la "
+                    "retención se niega a re-hashear — investigar con "
+                    "--verify")
             record["prev_hash"] = prev
             record["entry_hash"] = _entry_hash(record)
             prev = str(record["entry_hash"])
