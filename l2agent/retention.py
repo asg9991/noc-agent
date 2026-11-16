@@ -37,7 +37,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from l2agent.audit import file_lock, log_decision, rechain_lines
+from l2agent.audit import (assert_chain_intact, file_lock, log_decision,
+                           rechain_lines)
 from l2agent.notify import _cooldown_path, _load_cooldown, _save_cooldown
 
 DEFAULT_AUDIT_DAYS = 90.0
@@ -138,8 +139,11 @@ def _prune_jsonl(path: Path, cutoff: float,
             kept += 1
             out.append(raw)
         if dropped:
-            # A-1 vive en rechain_lines: se niega a re-hashear si el archivo
-            # muestra manipulación previa (hash falso o eslabón perdido).
+            # A-1: la validación corre sobre la cadena COMPLETA pre-poda —
+            # los gaps que crea la propia poda son legítimos; la manipulación
+            # previa (hash falso / eslabón perdido) bloquea el re-hasheo.
+            if rechain:
+                assert_chain_intact(raw_lines)
             new = rechain_lines(out) if rechain else out
             _write_lines_atomic(path, new)
 

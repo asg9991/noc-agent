@@ -108,15 +108,45 @@ def log_decision(
     return record
 
 
-def rechain_lines(lines: list[str]) -> list[str]:
-    """Re-ancla la cadena de integridad sobre las líneas encadenadas.
+def assert_chain_intact(lines: list[str]) -> None:
+    """A-1: valida la cadena COMPLETA pre-poda y falla ante manipulación.
 
-    Migración autorizada: la retención borra líneas expiradas y el eslabón
-    siguiente quedaría roto (falso positivo de manipulación). Se NIEGA a
-    re-hashear si detecta manipulación previa (A-1): contenido tamperado
-    (entry_hash no coincide con su recompute) o eslabón perdido (borrado o
-    reorden). Líneas basura/legado se conservan tal cual — verify_audit
-    sigue marcándolas, la retención no las lava.
+    El discriminador legítimo/tamperado es la cadena ANTES de podar: un
+    archivo sano valida entero (los gaps que crea la propia poda no cuentan).
+    Falla con contenido tamperado (entry_hash ≠ recompute) o eslabón perdido
+    (borrado o reorden). Líneas basura/legado no cuentan — no son
+    launables, verify_audit las sigue marcando.
+    """
+    prev = ""
+    for raw in lines:
+        if not raw.strip():
+            continue  # A-2: verify_audit la salta sin reiniciar el ancla
+        try:
+            record = json.loads(raw)
+        except json.JSONDecodeError:
+            continue  # basura: se conserva, no se lava
+        if isinstance(record, dict) and "entry_hash" in record:
+            if record.get("entry_hash") != _entry_hash(record):
+                raise ValueError(
+                    "cadena rota (contenido tamperado): la retención se "
+                    "niega a re-hashear — investigar con --verify")
+            if record.get("prev_hash") != prev:
+                raise ValueError(
+                    "cadena rota (eslabón perdido: borrado o reorden): la "
+                    "retención se niega a re-hashear — investigar con "
+                    "--verify")
+            prev = str(record["entry_hash"])
+        else:
+            prev = ""
+
+
+def rechain_lines(lines: list[str]) -> list[str]:
+    """Re-ancla la cadena de integridad sobre las líneas conservadas.
+
+    Migración autorizada (la retención borra líneas y el eslabón siguiente
+    quedaría roto). La validación de manipulación previa vive en
+    `assert_chain_intact` (sobre la cadena completa pre-poda) — acá solo se
+    re-ancla. Líneas basura/legado se conservan tal cual.
     """
     out: list[str] = []
     prev = ""
@@ -130,15 +160,6 @@ def rechain_lines(lines: list[str]) -> list[str]:
             out.append(raw)  # basura: se conserva, verify la sigue marcando
             continue
         if isinstance(record, dict) and "entry_hash" in record:
-            if record.get("entry_hash") != _entry_hash(record):
-                raise ValueError(
-                    "cadena rota (contenido tamperado): la retención se "
-                    "niega a re-hashear — investigar con --verify")
-            if record.get("prev_hash") != prev:
-                raise ValueError(
-                    "cadena rota (eslabón perdido: borrado o reorden): la "
-                    "retención se niega a re-hashear — investigar con "
-                    "--verify")
             record["prev_hash"] = prev
             record["entry_hash"] = _entry_hash(record)
             prev = str(record["entry_hash"])

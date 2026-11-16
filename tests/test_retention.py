@@ -640,53 +640,103 @@ def test_r1_constancia_incluso_cuando_rota_en_la_misma_corrida(tmp_path):
     assert records[0]["detail"]["rotated"] == r["rotated"]
 
 
-# --- Sospechas autorizadas por el usuario (2026-11-13): A-1/A-2/B-3/R2/R3
-# --- + S2/S3/S4 + cap de tamaño para outbox ---
+# --- Sospechas (A-1/A-2/R2/R3/S2/S3/S4 + cap outbox) — tests durables
+# --- probe-validados por la verificación independiente (2026-11-13) ---
 
 
-def test_a1_retencion_no_lava_archivos_manipulados(tmp_path):
-    """A-1: si hay manipulación previa, la poda se NIEGA a re-hashear — la
-    manipulación sigue detectable después del intento de retención."""
-    from l2agent.audit import _entry_hash, verify_audit
+def _chain(recs):
+    from l2agent.audit import _entry_hash
+    prev, out = "", []
+    for r in recs:
+        r["prev_hash"] = prev
+        r["entry_hash"] = _entry_hash(r)
+        prev = r["entry_hash"]
+        out.append(json.dumps(r, ensure_ascii=False))
+    return out
+
+
+def _rec(i, ts):
+    return {"ts": _iso(ts), "actor": "a", "action": f"x{i}", "channel": "lab",
+            "result": "ok", "detail": {}}
+
+
+def test_a1_cadena_intacta_si_se_poda_vencidas_al_inicio(tmp_path):
+    """A-1: podar vencidas de una cadena INTACTA funciona (re-ancla legítima)
+    y verify queda en verde; solo la manipulación previa debe bloquear."""
+    from l2agent.audit import verify_audit
     log = tmp_path / "audit.jsonl"
-    records = [
-        {"ts": _iso(NOW - 200 * DAY), "actor": "a", "action": f"x{i}",
-         "channel": "lab", "result": "ok", "detail": {}}
-        for i in range(4)
-    ]
-    records[2]["ts"] = _iso(NOW)   # dos vencidas y dos vigentes
-    records[3]["ts"] = _iso(NOW)
-    prev = ""
-    out = []
-    for rec in records:
-        rec["prev_hash"] = prev
-        rec["entry_hash"] = _entry_hash(rec)
-        prev = rec["entry_hash"]
-        out.append(json.dumps(rec, ensure_ascii=False))
-    log.write_text("\n".join(out) + "\n", encoding="utf-8")
-    # tamper: editar el resultado de una línea VIGENTE sin re-hashear
-    lines = [json.loads(x) for x in
-             log.read_text(encoding="utf-8").splitlines()]
-    lines[2]["result"] = "denegado"
-    log.write_text("\n".join(json.dumps(x, ensure_ascii=False)
-                             for x in lines) + "\n", encoding="utf-8")
-    with pytest.raises(ValueError):
+    log.write_text("\n".join(_chain([
+        _rec(0, NOW - 200 * DAY), _rec(1, NOW - 150 * DAY),
+        _rec(2, NOW), _rec(3, NOW)])) + "\n", encoding="utf-8")
+    r = retention.prune_audit(log, max_age_days=90, now=NOW)
+    assert r["dropped"] == 2 and r["kept"] == 2
+    assert verify_audit(log)["ok"] is True
+
+
+def test_a1_vencida_en_el_medio_de_cadena_intacta(tmp_path):
+    """A-1: una vencida en el medio de una cadena intacta también se poda."""
+    from l2agent.audit import verify_audit
+    log = tmp_path / "audit.jsonl"
+    log.write_text("\n".join(_chain([
+        _rec(0, NOW), _rec(1, NOW - 200 * DAY), _rec(2, NOW)])) + "\n",
+        encoding="utf-8")
+    r = retention.prune_audit(log, max_age_days=90, now=NOW)
+    assert r["dropped"] == 1 and r["kept"] == 2
+    assert verify_audit(log)["ok"] is True
+
+
+def test_a1_tamper_rechazado_y_archivo_intacto(tmp_path):
+    """A-1: contenido tamperado -> se niega, archivo byte-idéntico, y la
+    manipulación sigue detectable."""
+    import hashlib
+    from l2agent.audit import verify_audit
+    log = tmp_path / "audit.jsonl"
+    objs = [json.loads(x) for x in _chain([
+        _rec(0, NOW - 200 * DAY), _rec(1, NOW - 150 * DAY),
+        _rec(2, NOW), _rec(3, NOW)])]
+    objs[2]["result"] = "denegado"
+    log.write_text("\n".join(json.dumps(o, ensure_ascii=False)
+                             for o in objs) + "\n", encoding="utf-8")
+    h = hashlib.sha256(log.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="contenido tamperado"):
         retention.prune_audit(log, max_age_days=90, now=NOW)
-    assert verify_audit(log)["ok"] is False  # sigue detectable
+    assert hashlib.sha256(log.read_bytes()).hexdigest() == h
+    assert verify_audit(log)["ok"] is False
 
 
-def test_a2_lineas_en_blanco_no_rompen_el_reanclaje(tmp_path):
-    """A-2: una línea en blanco entre líneas encadenadas no debe producir
-    falso positivo tras podar."""
+def test_a1_borrado_intermedio_rechazado(tmp_path):
+    """A-1: borrar una línea intermedia -> se niega (eslabón perdido) y nada
+    se re-hashea."""
+    import hashlib
+    from l2agent.audit import verify_audit
+    log = tmp_path / "audit.jsonl"
+    objs = [json.loads(x) for x in _chain([
+        _rec(0, NOW - 200 * DAY), _rec(1, NOW), _rec(2, NOW)])]
+    del objs[1]
+    log.write_text("\n".join(json.dumps(o, ensure_ascii=False)
+                             for o in objs) + "\n", encoding="utf-8")
+    h = hashlib.sha256(log.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="eslab"):
+        retention.prune_audit(log, max_age_days=90, now=NOW)
+    assert hashlib.sha256(log.read_bytes()).hexdigest() == h
+    assert verify_audit(log)["ok"] is False
+
+
+def test_a2_blanco_no_reinicia_ancla_con_podas_reales(tmp_path):
+    """A-2: blanco intercalado entre selladas + vencida al final: sin falso
+    positivo y el blanco sobrevive."""
     from l2agent.audit import log_decision as ld, verify_audit
     log = tmp_path / "audit.jsonl"
     ld(log, actor="a", action="x", channel="lab", result="ok")
     with log.open("a", encoding="utf-8") as fh:
-        fh.write("\n")  # línea en blanco intercalada
+        fh.write("\n")
     ld(log, actor="a", action="y", channel="lab", result="ok")
-    r = retention.prune_audit(log, max_age_days=2, now=_future_days(10))
-    assert r["dropped"] >= 1
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write(_audit_line(_iso(NOW - 200 * DAY)) + "\n")
+    r = retention.prune_audit(log, max_age_days=90, now=NOW)
+    assert r["dropped"] == 1
     assert verify_audit(log)["ok"] is True
+    assert "\n\n" in log.read_text(encoding="utf-8")
 
 
 def test_r2_sidecar_lock_no_sigue_symlinks(tmp_path):
@@ -702,20 +752,24 @@ def test_r2_sidecar_lock_no_sigue_symlinks(tmp_path):
     assert not victim.exists(), "no se debe escribir a través del sidecar"
 
 
-def test_r3_constancia_no_nombra_segmentos_destruidos(tmp_path):
-    """R3: si el cap destruye el segmento recién rotado, la constancia no lo
-    nombra como vivo — queda en cap_removed."""
-    from l2agent.audit import log_decision as ld
+def test_r3_constancia_sin_nombre_de_segmento_destruido(tmp_path):
+    """R3: cap destruye el recién rotado (stamps no-monotónicos) -> la
+    constancia no lo nombra como vivo: rotated=null, queda en cap_removed."""
+    from datetime import datetime, timezone
     log = tmp_path / "audit.jsonl"
     old = _audit_line(_iso(NOW - 200 * DAY))
     fresh = _audit_line(_iso(NOW))
     log.write_text(old + "\n" + old + "\n" + fresh + "\n" + fresh + "\n",
                    encoding="utf-8")
-    # rotados con stamp FUTURO: el recién rotado (stamp=NOW) envejece en el
-    # sort (stamp, n) y el cap lo puede destruir
-    for d in (30, 31):
-        (tmp_path / f"audit.jsonl.{_iso(NOW + d * DAY)[:4]}"
-                    f"T000000Z").write_text(fresh + "\n", encoding="utf-8")
+
+    def stamp(days):
+        return datetime.fromtimestamp(NOW + days * DAY,
+                                      tz=timezone.utc
+                                      ).strftime("%Y%m%dT%H%M%SZ")
+    (tmp_path / f"audit.jsonl.{stamp(400)}").write_text(fresh + "\n",
+                                                        encoding="utf-8")
+    (tmp_path / f"audit.jsonl.{stamp(500)}").write_text(fresh + "\n",
+                                                        encoding="utf-8")
     r = retention.prune_audit(log, max_age_days=90, max_bytes=10,
                               keep_rotated=1, now=NOW)
     records = [json.loads(x) for x in
@@ -723,68 +777,93 @@ def test_r3_constancia_no_nombra_segmentos_destruidos(tmp_path):
                if '"retention_prune"' in x]
     assert records, "falta la constancia"
     detail = records[0]["detail"]
-    if r["rotated"] and not (tmp_path / r["rotated"]).exists():
-        assert detail["rotated"] is None
-        assert r["rotated"] in detail["cap_removed"]
+    assert r["rotated"] and not (tmp_path / r["rotated"]).exists(), \
+        "el escenario debe destruir el recién rotado"
+    assert detail["rotated"] is None
+    assert r["rotated"] in detail["cap_removed"]
 
 
-def test_s2_registros_con_u2028_no_se_rompen(tmp_path):
-    """S2: splitlines() no debe partir registros con U+2028/NEL: la línea
-    conservada queda byte-idéntica."""
+def test_s2_registros_u2028_u0085_u2029_byte_identicos(tmp_path):
+    """S2: registros con U+2028/U+0085/U+2029 sobreviven la poda intactos."""
     from l2agent.audit import log_decision as ld
+    for i, payload in enumerate(("a\u2028b", "a\u0085b", "a\u2029b")):
+        d = tmp_path / f"c{i}"
+        d.mkdir()
+        log = d / "audit.jsonl"
+        first = ld(log, actor="a", action="v", channel="lab", result="ok",
+                   detail={"q": payload})
+        linea = (json.dumps(first, ensure_ascii=False) + "\n").encode("utf-8")
+        with log.open("ab") as fh:
+            fh.write(_audit_line(_iso(NOW - 200 * DAY)).encode("utf-8")
+                     + b"\n")
+        r = retention.prune_audit(log, max_age_days=90, now=NOW)
+        assert r["dropped"] == 1
+        assert log.read_bytes().split(b"\n")[0] + b"\n" == linea
+        assert payload in log.read_text(encoding="utf-8")
+
+
+def test_s3_negativos_en_biblioteca_y_cli(tmp_path):
+    """S3: max_age_days negativo se rechaza en las 3 APIs y el CLI (exit 2),
+    sin mutar datos."""
+    from l2agent.retention import main as ret_main
     log = tmp_path / "audit.jsonl"
-    ld(log, actor="a", action="vieja", channel="lab", result="ok",
-       detail={"q": "linea1\u2028linea2"})
-    old = _audit_line(_iso(NOW - 200 * DAY))
-    with log.open("a", encoding="utf-8") as fh:
-        fh.write(old + "\n")
-    r = retention.prune_audit(log, max_age_days=90, now=NOW)
-    assert r["dropped"] == 1
-    text = log.read_text(encoding="utf-8")
-    assert "linea1\u2028linea2" in text  # el registro intacto
+    log.write_text(_audit_line(_iso(NOW)) + "\n", encoding="utf-8")
+    for fn in (lambda: retention.prune_audit(log, max_age_days=-1),
+               lambda: retention.prune_outbox(tmp_path / "o.jsonl",
+                                              max_age_days=-1),
+               lambda: retention.prune_db(tmp_path / "w.db",
+                                          max_age_days=-1)):
+        with pytest.raises(ValueError, match="max_age_days debe ser >= 0"):
+            fn()
+    for flag in ("--days", "--outbox-days", "--db-days",
+                 "--outbox-max-bytes"):
+        with pytest.raises(SystemExit) as exc:
+            ret_main(["--audit", str(log), flag, "-1"])
+        assert exc.value.code == 2
+    assert log.read_text(encoding="utf-8") == _audit_line(_iso(NOW)) + "\n"
 
 
-def test_s3_ventana_negativa_es_invalida(tmp_path):
-    """S3: max_age_days negativo borra lo vigente; la API de biblioteca lo
-    rechaza igual que el CLI."""
+def test_s4_rc_exacto_reporte_y_corrupto_intacto(tmp_path, capsys):
+    """S4: artefacto corrupto -> rc==1 exacto, reporte completo, demás
+    procesados, corrupto byte-idéntico."""
     log = tmp_path / "audit.jsonl"
-    log_decision = __import__("l2agent.audit", fromlist=["log_decision"]
-                              ).log_decision
-    log_decision(log, actor="a", action="x", channel="lab", result="ok")
-    with pytest.raises(ValueError):
-        retention.prune_audit(log, max_age_days=-1)
-
-
-def test_s4_artefacto_malo_no_aborta_la_corrida(tmp_path, capsys):
-    """S4: un artefacto corrupto no saltea los otros ni pierde el reporte."""
-    log = tmp_path / "audit.jsonl"
-    old = _audit_line(_iso(NOW - 200 * DAY))
-    log.write_text(old + "\n", encoding="utf-8")
+    log.write_text(_audit_line(_iso(NOW - 200 * DAY)) + "\n",
+                   encoding="utf-8")
     bad = tmp_path / "audit.jsonl.20260101T000000Z"
-    bad.write_bytes(b"\xff\xfe basura\n")  # UTF-8 inválido
+    bad.write_bytes(b"\xff\xfe basura\n")
     outbox = tmp_path / "outbox.jsonl"
-    outbox.write_text(json.dumps({"ts": NOW - 200 * DAY,
-                                  "a": 1}) + "\n", encoding="utf-8")
+    outbox.write_text(json.dumps({"ts": NOW - 200 * DAY, "a": 1}) + "\n",
+                      encoding="utf-8")
     rc = retention.main(["--audit", str(log), "--outbox", str(outbox),
                          "--db", str(tmp_path / "no-existe.db"),
                          "--now", str(NOW)])
-    assert rc != 0  # el artefacto malo se reporta; los demás corren igual
+    assert rc == 1
     report = json.loads(capsys.readouterr().out)
-    assert report["outbox"]["dropped"] == 1  # los demás se procesan igual
+    assert report["audit"]["error"].startswith("UnicodeDecodeError")
+    assert report["outbox"]["dropped"] == 1
+    assert "error" not in report["db"]
+    assert bad.read_bytes() == b"\xff\xfe basura\n"
 
 
-def test_outbox_cap_por_tamaño_descarta_lo_mas_viejo(tmp_path):
-    """Cap de outbox: bajo inundación, la cola queda acotada descartando lo
-    más viejo (y se declara en el reporte)."""
-    log = tmp_path / "outbox.jsonl"
-    with log.open("w", encoding="utf-8") as fh:
+def test_cap_outbox_limites_exactos_y_cli(tmp_path, capsys):
+    """Cap: tamaño exacto no recorta; --outbox-max-bytes acota descartando lo
+    más viejo y lo declara en overflow_dropped."""
+    from l2agent.retention import main as ret_main
+    out = tmp_path / "outbox.jsonl"
+    linea = json.dumps({"ts": NOW, "id": -1, "pad": "x" * 60}) + "\n"
+    out.write_text(linea, encoding="utf-8")
+    r = retention.prune_outbox(out, max_age_days=90, now=NOW,
+                               max_bytes=out.stat().st_size)
+    assert r["overflow_dropped"] == 0
+    assert out.read_text(encoding="utf-8") == linea
+    with out.open("a", encoding="utf-8") as fh:
         for i in range(50):
-            fh.write(json.dumps({"ts": _iso(NOW), "id": i,
+            fh.write(json.dumps({"ts": NOW, "id": i,
                                  "pad": "x" * 100}) + "\n")
-    r = retention.prune_outbox(log, max_age_days=90, now=NOW,
-                               max_bytes=1000)
-    assert r["overflow_dropped"] > 0
-    assert log.stat().st_size <= 1000
-    remaining = [json.loads(x)["id"] for x in
-                 log.read_text(encoding="utf-8").splitlines()]
-    assert remaining == sorted(remaining)[-len(remaining):]  # quedan los más nuevos
+    rc = ret_main(["--audit", str(tmp_path / "no.jsonl"), "--outbox", str(out),
+                   "--db", str(tmp_path / "no.db"),
+                   "--outbox-max-bytes", "1000", "--now", str(NOW)])
+    report = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert report["outbox"]["overflow_dropped"] > 0
+    assert out.stat().st_size <= 1000
