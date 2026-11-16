@@ -42,6 +42,16 @@ def build_client_from_env() -> MCPClient:
     return MCPClient(url=os.getenv("MCP_URL", DEFAULT_MCP_URL))
 
 
+def _min_interval() -> float:
+    raw = os.getenv("LLM_MIN_INTERVAL_S", "0")
+    try:
+        return float(raw)
+    except ValueError:
+        print(f"LLM_MIN_INTERVAL_S debe ser un número de segundos "
+              f"(recibido: {raw!r})", file=sys.stderr)
+        raise SystemExit(2)
+
+
 def build_model_from_env(role: str) -> ChatModel:
     name = os.getenv("LLM_MODEL", "").strip()
     if not name:
@@ -56,7 +66,7 @@ def build_model_from_env(role: str) -> ChatModel:
         model=name,
         api_key=os.getenv("LLM_API_KEY", ""),
         role=role,
-        min_interval_s=float(os.getenv("LLM_MIN_INTERVAL_S", "0")),
+        min_interval_s=_min_interval(),
     )
 
 
@@ -82,15 +92,27 @@ def main(argv: list[str] | None = None, *,
         return 0
     if not args.goal:
         parser.error("falta el objetivo (o usá --list-tools)")
-    actor = (args.actor or os.getenv("NOC_ACTOR")
-             or _kernel_user() or "cli")
-    the_client = client if client is not None else build_client_from_env()
-    the_model = model if model is not None else build_model_from_env(args.role)
+    # Cadena de identidad con ORIGEN registrado (B-6): lo auto-declarado
+    # (--actor/NOC_ACTOR) queda distinguible de lo autenticado (kernel).
+    if args.actor:
+        actor, actor_source = args.actor, "cli"
+    elif os.getenv("NOC_ACTOR", "").strip():
+        actor, actor_source = os.getenv("NOC_ACTOR").strip(), "env"
+    elif _kernel_user():
+        actor, actor_source = _kernel_user(), "kernel"
+    else:
+        actor, actor_source = "cli", "fallback"
+    # La traza se escribe ANTES de construir modelo/cliente (B-5): un
+    # intento L2 fallido por configuración también es una decisión de
+    # routing y debe quedar en el audit (igual que handle_l2).
     log_decision(
         args.audit, actor=actor, action="route", channel="lab",
         result="L2",
-        detail={"handler": "run_loop", "text": args.goal[:200]},
+        detail={"handler": "run_loop", "text": args.goal[:200],
+                "actor_source": actor_source},
     )
+    the_client = client if client is not None else build_client_from_env()
+    the_model = model if model is not None else build_model_from_env(args.role)
     print(run_loop(args.goal, model=the_model, client=the_client,
                    actor=actor, audit_path=args.audit,
                    max_iters=args.max_iters))

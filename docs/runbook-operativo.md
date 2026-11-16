@@ -92,7 +92,7 @@ Dos identidades conviven y no se mezclan (arquitectura §7):
 - **Identidad de aplicación**: cada registro de audit lleva `actor` (quién
   preguntó: usuario de canal o técnico) y `channel` (desde dónde: lab, mail,
   discord). Se propagan hasta `run_loop` desde cada origen: CLI
-  (`--actor` / `NOC_ACTOR` / `$USER`) y `route()`/`handle_l2`
+  (`--actor` / `NOC_ACTOR` / kernel `pwd.getpwuid`) y `route()`/`handle_l2`
   (`actor=`, `channel=` — los adapters de Fase 4 pasarán el ID de usuario
   de canal).
 

@@ -96,3 +96,44 @@ def test_gate_blocks_writes_before_network():
             c.call_tool(bad, {})
     assert t.calls == []  # nothing left the process
     assert all(b.get("method") != "tools/call" for b in t.bodies)
+
+
+# --- JD#2 info rows: SSE + initialize (A-2/A-5/B-1/B-2) ---
+
+
+def test_sse_multiframe_devuelve_resultado_no_la_notificacion():
+    """B-1: si después del resultado llega una notificación, la respuesta
+    sigue siendo el resultado (antes: se tragaba y devolvía None)."""
+    text = ('data: {"jsonrpc":"2.0","id":1,"result":{"tools":[1]}}\n\n'
+            'data: {"jsonrpc":"2.0","method":"notifications/progress"}\n\n')
+    env = _extract_jsonrpc(text)
+    assert env.get("result") == {"tools": [1]}
+
+
+def test_sse_data_sin_espacio_y_multilinea():
+    """A-5: 'data:{...}' (spec SSE) y campos data multi-línea se parsean."""
+    assert _extract_jsonrpc('data:{"jsonrpc":"2.0","id":1,"result":5}'
+                            )["result"] == 5
+    multi = 'data: {"jsonrpc":"2.0","id":1,\ndata:  "result": 7}\n\n'
+    assert _extract_jsonrpc(multi)["result"] == 7
+
+
+def test_sse_solo_notificaciones_es_error_loud():
+    """B-1: un stream sin envelope de respuesta NO devuelve None en
+    silencio — falla loud."""
+    with pytest.raises(RuntimeError):
+        _extract_jsonrpc('data: {"jsonrpc":"2.0","method":"ping"}\n\n')
+
+
+def test_initialize_no_traga_errores_jsonrpc():
+    """B-2: un rechazo JSON-RPC del handshake debe disparar error (y el
+    alarm de rotación), no devolver '' como si nada."""
+    class _ErrTransport:
+        def post(self, url, json=None, headers=None):
+            body = {"jsonrpc": "2.0", "id": json["id"],
+                    "error": {"code": -32001, "message": "unauthorized"}}
+            return _FakeResp(json_lib_dumps(body))
+
+    c = MCPClient(url="http://hub", transport=_ErrTransport())
+    with pytest.raises(RuntimeError, match="unauthorized"):
+        c.initialize()

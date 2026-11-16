@@ -1,5 +1,9 @@
 """Router tests: cliente fake, sin red."""
 
+import json
+
+import pytest
+
 from agent.router import L2_NO_MODEL, classify_l1, handle_l2, route, route_l0
 
 
@@ -23,14 +27,14 @@ class FakeClient:
 
 
 def test_l0_exact_estado(tmp_path):
-    level, text = route("estado", FakeClient(),
+    level, text = route("estado", FakeClient(), actor="ana", channel="lab",
                         audit_path=tmp_path / "audit.jsonl")
     assert level == "L0"
     assert "7.4.13" in text
 
 
 def test_l0_exact_ack(tmp_path):
-    level, text = route("ack", FakeClient(),
+    level, text = route("ack", FakeClient(), actor="ana", channel="lab",
                         audit_path=tmp_path / "audit.jsonl")
     assert level == "L0"
     assert "CPU alta" in text
@@ -39,7 +43,7 @@ def test_l0_exact_ack(tmp_path):
 def test_l1_keyword_routes_to_l0_handler(tmp_path):
     assert route_l0("hay alertas nuevas?") is None  # no es comando exacto
     assert classify_l1("hay alertas nuevas?") is not None
-    level, text = route("hay alertas nuevas?", FakeClient(),
+    level, text = route("hay alertas nuevas?", FakeClient(), actor="ana", channel="lab",
                         audit_path=tmp_path / "audit.jsonl")
     assert level == "L1"
     assert "CPU alta" in text
@@ -47,7 +51,7 @@ def test_l1_keyword_routes_to_l0_handler(tmp_path):
 
 def test_l2_sin_modelo_avisa_en_vez_de_romper(monkeypatch, tmp_path):
     monkeypatch.delenv("LLM_MODEL", raising=False)
-    level, text = route("correlaciona la causa raiz con runbooks", FakeClient(),
+    level, text = route("correlaciona la causa raiz con runbooks", FakeClient(), actor="ana", channel="lab",
                         audit_path=tmp_path / "audit.jsonl")
     assert level == "L2"
     assert text == L2_NO_MODEL
@@ -82,7 +86,7 @@ def test_l2_con_fakes_corre_el_loop(tmp_path):
     )
     fake = FakeMCP(payload=[{"name": "CPU alta"}, {"name": "Disco lleno"}])
     log = tmp_path / "audit.jsonl"
-    text = handle_l2("¿hay alertas?", model=model, client=fake, audit_path=log)
+    text = handle_l2("¿hay alertas?", actor="ana", channel="lab", model=model, client=fake, audit_path=log)
     assert text == "2 problemas activos."
     assert fake.calls == [("problem_active_get", {})]
     assert log.exists()
@@ -185,11 +189,11 @@ def _route_records(log):
 def test_route_deja_traza_por_nivel(tmp_path, monkeypatch):
     """P11: cada decisión de routing queda registrada con su nivel (§5)."""
     log = tmp_path / "audit.jsonl"
-    route("estado", FakeClient(), actor="ana", audit_path=log)
-    route("hay alertas nuevas?", FakeClient(), actor="ana", audit_path=log)
+    route("estado", FakeClient(), actor="ana", channel="lab", audit_path=log)
+    route("hay alertas nuevas?", FakeClient(), actor="ana", channel="lab", audit_path=log)
     monkeypatch.delenv("LLM_MODEL", raising=False)
     route("explica la causa raiz de todo", FakeClient(), actor="ana",
-          audit_path=log)
+          channel="lab", audit_path=log)
     regs = _route_records(log)
     assert [r["result"] for r in regs] == ["L0", "L1", "L2"]
     assert [r["detail"]["handler"] for r in regs] == [
@@ -227,3 +231,108 @@ def test_cli_actor_default_usa_identidad_del_kernel(tmp_path, monkeypatch):
     esperado = pwd.getpwuid(os.getuid()).pw_name
     assert lineas and all(l["actor"] == esperado for l in lineas)
     assert all(l["actor"] != "intruso" for l in lineas)
+
+
+# --- JD#2 info rows: identidad obligatoria, trazas, totales (B-6..B-9/A-4) ---
+
+
+def test_identidad_es_obligatoria():
+    """B-7: route()/handle_l2 no fabrican identidad — sin actor/channel
+    explícito, error inmediato (antes: default silencioso 'l2'/'lab')."""
+    from agent.router import route, handle_l2
+    with pytest.raises(TypeError):
+        route("estado", FakeClient())
+    with pytest.raises(TypeError):
+        handle_l2("hola", model=None, client=None)
+
+
+def test_traza_cli_se_escribe_antes_de_fallar_por_modelo(tmp_path,
+                                                         monkeypatch):
+    """B-5: el intento L2 del CLI queda en el audit aunque falle la
+    construcción del modelo (antes: 0 registros)."""
+    from l2agent.main import main as l2main
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    log = tmp_path / "audit.jsonl"
+    with pytest.raises(SystemExit):
+        l2main(["objetivo", "--audit", str(log)])
+    assert log.exists() and '"route"' in log.read_text(encoding="utf-8")
+
+
+def test_min_interval_malo_da_error_amable(tmp_path, monkeypatch):
+    """B-10: LLM_MIN_INTERVAL_S malformado sale con mensaje claro (exit 2),
+    no con traceback crudo."""
+    from l2agent.main import main as l2main
+    monkeypatch.setenv("LLM_MODEL", "m")
+    monkeypatch.setenv("LLM_MIN_INTERVAL_S", "no-numero")
+    with pytest.raises(SystemExit) as exc:
+        l2main(["objetivo", "--audit", str(tmp_path / "a.jsonl")])
+    assert exc.value.code == 2
+
+
+def test_actor_source_queda_en_el_audit(tmp_path, monkeypatch):
+    """B-6: la cadena de identidad deja el ORIGEN en el audit — lo
+    auto-declarado (NOC_ACTOR) es distinguible de lo autenticado (kernel)."""
+    from l2agent.main import main as l2main
+    monkeypatch.setenv("NOC_ACTOR", "intruso")
+    monkeypatch.delenv("LLM_MIN_INTERVAL_S", raising=False)
+    log = tmp_path / "audit.jsonl"
+    l2main(["hola", "--audit", str(log)], model=FakeModel([]),
+           client=FakeClient())
+    records = [json.loads(x) for x in
+               log.read_text(encoding="utf-8").splitlines()]
+    record = next(r for r in records if r["action"] == "route")
+    assert record["actor"] == "intruso"
+    assert record["detail"]["actor_source"] == "env"
+
+
+def test_estado_reporta_muestra_cuando_trunca(tmp_path):
+    """B-8: si el fetch llegó al limit, el conteo se reporta como muestra
+    ('100+'), no como total exacto (antes: sub-reacción a incidentes)."""
+    from agent.router import route
+
+    class Big:
+        def get_version(self):
+            return "7.4"
+
+        def get_problems(self, limit=100):
+            return [{"name": "x"}] * limit
+
+        def get_hosts(self, limit=100):
+            return [{"host": "h"}] * limit
+
+    level, text = route("estado", Big(), actor="ana", channel="lab",
+                        audit_path=str(tmp_path / "a.jsonl"))
+    assert level == "L0"
+    assert "hosts: 100+" in text and "problemas activos: 100+" in text
+
+
+def test_l1_empates_van_a_estado(tmp_path):
+    """A-4: consultas ambiguas (familia ack y estado a la vez) resuelven
+    por regla declarada hacia el resumen de estado, no por orden de tabla."""
+    from agent.router import route
+    log = str(tmp_path / "a.jsonl")
+    for q in ("estado de los problemas", "problemas del estado",
+              "alerta de estado"):
+        level, text = route(q, FakeClient(), actor="ana", channel="lab",
+                            audit_path=log)
+        assert level == "L1"
+        assert "Zabbix" in text, f"{q!r} debe ir a handle_estado, fue: {text}"
+
+
+def test_route_propaga_role_y_on_denied(tmp_path, monkeypatch):
+    """B-9: route() expone role/on_denied y los llega a handle_l2."""
+    import agent.router as r
+    seen = {}
+    real = r.handle_l2
+
+    def spy(text, **kw):
+        seen.update(kw)
+        return "ok"
+
+    monkeypatch.setattr(r, "handle_l2", spy)
+    level, _ = route("explica la causa raiz de todo", FakeClient(),
+                     actor="ana", channel="lab", role="technician",
+                     on_denied=lambda *_: None,
+                     audit_path=str(tmp_path / "a.jsonl"))
+    assert level == "L2"
+    assert seen["role"] == "technician" and seen["on_denied"] is not None
