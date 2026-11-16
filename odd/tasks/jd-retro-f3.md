@@ -90,3 +90,43 @@ Vista externa (F1): verificador independiente sobre el batch → **1 blocker**
 borrados; rechazaba la retención sana) + tests vacíos detectados. Corregido
 en `015c43c` con validación pre-poda + tests durables probe-validados.
 Recheck limitado a los blockers: verde. Suite: **166 passed**.
+
+---
+
+# Judgment Day #2 — bloque identidad/bearer/trazas
+
+Target: `main@0f3a8b9` — `agent/router.py`, `agent/mcp_client.py`,
+`l2agent/main.py`. Jueces ciegos A+B (paralelos). Round 1.
+
+## Contratos verificados LIMPIOS (ambos jueces)
+- **Sin spoofing por payload**: actor/channel nunca se derivan del mensaje ✓
+- **Identidad kernel** (`pwd.getpwuid`): implementada y testeada; `$USER`
+  fuera del código ✓ (los docs §4/backlog P10 quedaron desactualizados —
+  doc drift, fuera de alcance, anotado)
+- **Bearer nunca logueado ni ecoado** en errores/repr ✓
+- **Una traza `action="route"` por decisión**, actor/nivel correctos ✓
+
+## Hallazgos — 10 filas INFO (sin severos: todos WARNING/SUGGESTION)
+
+| Parejas corroboradas por AMBOS | |
+| --- | --- |
+| Parsing SSE (`mcp_client:64-65`): multi-frame → `result None` silencioso (L2 responde con datos faltantes); `data:{` sin espacio o multi-línea → error espurio | A-2/A-5 ↔ B-1 |
+| `resolve_bearer` sin chequeo de permisos: un `644` se lee sin queja (§4 dice 600) | A-1 ↔ B-3 |
+| Trazas del CLI escritas DESPUÉS de construir el modelo: intentos L2 fallidos sin modelo dejan **0 registros** (el informe P11 subconta) | A-3 ↔ B-5 |
+| `LLM_MIN_INTERVAL_S` malformado → traceback crudo en vez de error amable | A-6 ↔ B-10 |
+
+| Un solo juez | |
+| --- | --- |
+| `initialize()` traga envelopes de error JSON-RPC → rechazo de auth no dispara el alarm de rotación; se diagnostica tarde y mal | B-2 |
+| Fallos de resolución del bearer colapsan a `''` sin diagnóstico (path malo → 401 tarde → "rotá el token" equivocado) | B-4 |
+| `NOC_ACTOR` (env spoofeable) pisa la identidad kernel sin marcador autenticado en el audit | B-6 |
+| `route()` fabrica identidad por default (`actor='l2'`, `channel='lab'`) si el caller olvida pasarla | B-7 |
+| `handle_estado`/`handle_ack` reportan conteos **truncados por limit** como totales (sub-reacción a incidentes grandes) | B-8 |
+| `route()` no expone `role`/`on_denied` (gap de integración Fase 4) | B-9 |
+| Precedencia de keywords L1 por orden de tabla (consultas ambiguas → `handle_ack`) | A-4 |
+
+## Veredicto
+
+**JUDGMENT: APPROVED ✅** — 0 hallazgos severos; los contratos de identidad
+se sostienen. 10 filas INFO (4 corroboradas + 6 individuales) quedan a
+decisión del usuario. Sin rounds de fix, sin re-juicio necesario.
