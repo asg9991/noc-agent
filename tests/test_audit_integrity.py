@@ -163,3 +163,19 @@ def test_append_concurrente_no_rompe_la_cadena(tmp_path):
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert verify_audit(log)["ok"] is True
+
+
+# --- Pre-existentes A3 (autorización del usuario, 2026-11-13) ---
+
+
+def test_a3_verify_no_falsa_manipulacion_con_u2028(tmp_path):
+    """A3: un registro legítimo con U+2028 NO es manipulación — verify debe
+    dar verde y routing_report debe contarlo."""
+    from l2agent.audit import log_decision, routing_report, verify_audit
+    log = tmp_path / "audit.jsonl"
+    log_decision(log, actor="ana", action="route", channel="lab",
+                 result="L1", detail={"handler": "responder x"})
+    v = verify_audit(log)
+    assert v["ok"] is True, f"falso positivo de manipulación: {v}"
+    r = routing_report(log)
+    assert r["total"] == 1 and r["levels"] == {"L1": 1}

@@ -37,8 +37,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from l2agent.audit import (assert_chain_intact, file_lock, log_decision,
-                           rechain_lines)
+from l2agent.audit import (assert_chain_intact, file_lock,
+                           log_decision, rechain_lines, split_record_lines)
 from l2agent.notify import _cooldown_path, _load_cooldown, _save_cooldown
 
 DEFAULT_AUDIT_DAYS = 90.0
@@ -125,12 +125,7 @@ def _prune_jsonl(path: Path, cutoff: float,
 
     def _work() -> None:
         nonlocal kept, dropped
-        text = path.read_text(encoding="utf-8")
-        # S2: partir SOLO por "\n" — str.splitlines() también corta en
-        # U+2028/U+2029/U+0085 y partiría registros conservados en dos.
-        raw_lines = text.split("\n")
-        if raw_lines and raw_lines[-1] == "":
-            raw_lines.pop()  # newline final
+        raw_lines = split_record_lines(path.read_text(encoding="utf-8"))
         for raw in raw_lines:
             ts = ts_of(raw)
             if ts is not None and ts < cutoff:
@@ -237,7 +232,7 @@ def prune_audit(path: str | Path, *,
                 for f in rotated[:max(0, len(rotated) - keep_rotated)]:
                     # las líneas de un archivo removido por el tope dejan de
                     # estar conservadas: el reporte reconcilia con el final
-                    lines = len(f.read_text(encoding="utf-8").splitlines())
+                    lines = len(split_record_lines(f.read_text(encoding="utf-8")))
                     kept -= lines
                     dropped += lines
                     f.unlink()
@@ -294,10 +289,10 @@ def prune_outbox(path: str | Path, *,
     if not p.is_symlink() and p.exists() and p.stat().st_size > max_bytes:
         with file_lock(p):
             text = p.read_text(encoding="utf-8")
-            lines = text.split("\n")
-            if lines and lines[-1] == "":
-                lines.pop()
-            while (lines
+            lines = split_record_lines(text)
+            # A4: nunca vaciar la cola — si una sola línea excede el tope se
+            # conserva (perder lo más nuevo es peor que desbordar).
+            while (len(lines) > 1
                    and len("".join(x + "\n" for x in lines)) > max_bytes):
                 lines.pop(0)  # la cola se appendea: lo primero es lo más viejo
                 overflow_dropped += 1

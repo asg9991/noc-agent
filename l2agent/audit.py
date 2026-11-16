@@ -41,6 +41,16 @@ def file_lock(path: str | Path) -> Iterator[None]:
         os.close(fd)
 
 
+def split_record_lines(text: str) -> list[str]:
+    """Parte JSONL solo por "\\n" (S2/A3): `str.splitlines()` también corta
+    en U+2028/U+2029/U+0085 y partiría registros legítimos en dos — que
+    `verify_audit` leería como manipulación y `routing_report` perdería."""
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()  # newline final
+    return lines
+
+
 def _canonical(record: dict[str, Any]) -> bytes:
     """Forma canónica de una línea para hashear (sin su propio entry_hash)."""
     payload = {k: v for k, v in record.items() if k != "entry_hash"}
@@ -185,7 +195,8 @@ def verify_audit(path: str | Path) -> dict[str, Any]:
         return result
     expected_prev = ""
     sealed_seen = False
-    for n, raw in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+    for n, raw in enumerate(split_record_lines(
+            p.read_text(encoding="utf-8")), 1):
         if not raw.strip():
             continue
         try:
@@ -269,7 +280,7 @@ def routing_report(path: str | Path, *,
     p = Path(path)
     if not p.exists():
         return {"total": 0, "levels": {}, "handlers": {}, "actors": {}}
-    for raw in p.read_text(encoding="utf-8").splitlines():
+    for raw in split_record_lines(p.read_text(encoding="utf-8")):
         try:
             record = json.loads(raw)
         except json.JSONDecodeError:
