@@ -45,3 +45,55 @@ def test_sin_bearer_nunca_falla_devuelve_vacio(monkeypatch, tmp_path):
     monkeypatch.delenv("MCP_BEARER", raising=False)
     monkeypatch.setenv("MCP_BEARER_FILE", str(tmp_path / "no-existe"))
     assert mcp_client.resolve_bearer() == ""
+
+
+# --- JD#2 info rows: permisos y diagnóstico del bearer (A-1/B-3/B-4) ---
+
+
+def test_archivo_con_permisos_abiertos_deja_aviso(tmp_path, capsys,
+                                                  monkeypatch):
+    """B-3: un bearer legible por otros usuarios se lee, pero deja aviso
+    persistente en stderr (antes: silencio total)."""
+    from agent.mcp_client import resolve_bearer
+    f = tmp_path / "bearer"
+    f.write_text("secreto123", encoding="utf-8")
+    f.chmod(0o644)
+    monkeypatch.setenv("MCP_BEARER_FILE", str(f))
+    monkeypatch.delenv("MCP_BEARER", raising=False)
+    assert resolve_bearer() == "secreto123"
+    assert "permisos" in capsys.readouterr().err
+
+
+def test_path_configurado_ilegible_avisa(tmp_path, capsys, monkeypatch):
+    """B-4: un MCP_BEARER_FILE configurado que no se puede leer avisa en
+    vez de colapsar a '' sin diagnóstico (el 401 tardío mal-diagnostica)."""
+    from agent.mcp_client import resolve_bearer
+    monkeypatch.setenv("MCP_BEARER_FILE", str(tmp_path / "no-existe"))
+    monkeypatch.delenv("MCP_BEARER", raising=False)
+    assert resolve_bearer() == ""
+    assert "no se pudo leer" in capsys.readouterr().err
+
+
+def test_bearer_600_no_avisa(tmp_path, capsys, monkeypatch):
+    """B-3: solo los permisos abiertos generan aviso (600 queda en silencio)."""
+    from agent.mcp_client import resolve_bearer
+    f = tmp_path / "bearer"
+    f.write_text("secreto123", encoding="utf-8")
+    f.chmod(0o600)
+    monkeypatch.setenv("MCP_BEARER_FILE", str(f))
+    monkeypatch.delenv("MCP_BEARER", raising=False)
+    assert resolve_bearer() == "secreto123"
+    assert capsys.readouterr().err == ""
+
+
+def test_bearer_ilegible_devuelve_vacio_sin_excepcion(tmp_path, capsys,
+                                                      monkeypatch):
+    """B-4: chmod 000 jamás explota: '' + aviso."""
+    from agent.mcp_client import resolve_bearer
+    f = tmp_path / "bearer"
+    f.write_text("x", encoding="utf-8")
+    f.chmod(0o000)
+    monkeypatch.setenv("MCP_BEARER_FILE", str(f))
+    monkeypatch.delenv("MCP_BEARER", raising=False)
+    assert resolve_bearer() == ""
+    assert "no se pudo leer" in capsys.readouterr().err

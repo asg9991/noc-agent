@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -47,25 +49,58 @@ def resolve_bearer(explicit: str = "") -> str:
     file_env = os.getenv("MCP_BEARER_FILE", "").strip()
     path = Path(file_env) if file_env else BEARER_FILE
     try:
-        return path.read_text(encoding="utf-8").strip()
-    except OSError:
+        value = path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        if file_env:
+            # Un path configurado que no se lee = misconfiguración del
+            # operador: avisar acá (el 401 tardío manda a rotar el token
+            # equivocado). El default de lab ausente es estado válido.
+            print(f"aviso: no se pudo leer el bearer en {path}: {exc}",
+                  file=sys.stderr)
         return ""
+    try:
+        mode = path.stat().st_mode & 0o777
+        if mode & 0o077:
+            print(f"aviso: {path} tiene permisos {mode:04o}; debe ser 600 "
+                  "(runbook §4)", file=sys.stderr)
+    except OSError:
+        pass
+    return value
 
 
 def _extract_jsonrpc(text: str) -> dict[str, Any]:
-    """Parse plain JSON or SSE (data: {...}) frames into the envelope."""
+    """Parse plain JSON o streams SSE en el envelope de respuesta.
+
+    SSE: eventos separados por líneas en blanco; `data:` (con o sin espacio,
+    spec SSE) puede ser multi-línea y se une con \n. De todos los eventos se
+    prefiere el envelope de RESPUESTA JSON-RPC (result/error): una
+    notificación posterior jamás se come el resultado (B-1), y un stream sin
+    envelope de respuesta falla loud en vez de devolver None.
+    """
     text = text.strip()
     if not text:
         raise RuntimeError("Empty MCP response")
     if text.startswith("{"):
         return json.loads(text)
-    payload = ""
-    for line in text.splitlines():
-        if line.startswith("data: "):
-            payload = line[len("data: "):]
-    if not payload:
-        raise RuntimeError("Unrecognized MCP response shape")
-    return json.loads(payload)
+    envelopes: list[dict[str, Any]] = []
+    for block in re.split(r"\r?\n\r?\n", text):
+        data_lines = []
+        for line in block.splitlines():
+            if line.startswith("data:"):
+                data_lines.append(line[5:].removeprefix(" "))
+        if not data_lines:
+            continue
+        try:
+            env = json.loads("\n".join(data_lines))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(env, dict):
+            envelopes.append(env)
+    for env in envelopes:
+        if "result" in env or "error" in env:
+            return env
+    raise RuntimeError("Unrecognized MCP response shape (sin envelope de "
+                       "respuesta en el stream)")
 
 
 class MCPClient:
@@ -134,7 +169,11 @@ class MCPClient:
         )
         if session:
             self.session_id = session
-        _extract_jsonrpc(resp.text)  # validate shape, ignore capabilities
+        envelope = _extract_jsonrpc(resp.text)  # ignore capabilities
+        if "error" in envelope:
+            # Un rechazo del handshake debe disparar el alarm de rotación
+            # del loop, no devolver '' como si nada (B-2).
+            raise RuntimeError(f"MCP error: {envelope['error']}")
         return self.session_id or ""
 
     def list_tools(self) -> list[dict[str, Any]]:

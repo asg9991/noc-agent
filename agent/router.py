@@ -31,13 +31,18 @@ L2_NO_MODEL = (
 )
 
 
+def _count(items: list, limit: int) -> str:
+    """Si el fetch llegó al limit, el número es una MUESTRA, no el total."""
+    return f"{len(items)}+" if len(items) >= limit else str(len(items))
+
+
 def handle_estado(client: ZabbixReader) -> str:
     version = client.get_version()
     problems = client.get_problems(limit=100)
     hosts = client.get_hosts(limit=100)
     return (
-        f"Zabbix {version} | hosts: {len(hosts)} | "
-        f"problemas activos: {len(problems)}"
+        f"Zabbix {version} | hosts: {_count(hosts, 100)} | "
+        f"problemas activos: {_count(problems, 100)}"
     )
 
 
@@ -47,7 +52,7 @@ def handle_ack(client: ZabbixReader) -> str:
         return "Sin problemas activos para hacer ack."
     names = "; ".join(p.get("name", "?") for p in problems[:5])
     return (
-        f"Hay {len(problems)} problema(s) reciente(s). "
+        f"Hay {_count(problems, 5)} problema(s) reciente(s). "
         f"ACK manual requerido via Zabbix UI. Ej: {names}"
     )
 
@@ -60,16 +65,20 @@ def handle_l2(
     role: str = "operator",
     audit_path: str = "audit.jsonl",
     on_denied: DeniedHook = None,
-    actor: str = "l2",
-    channel: str = "lab",
+    actor: str = "",
+    channel: str = "",
 ) -> str:
     """L2 real: el objetivo corre por el loop con el catálogo curado.
 
     Sin inyección (producción/CLI): modelo y cliente salen del env. Sin
     LLM_MODEL no se rompe: avisa qué falta. En tests se inyectan fakes.
     `actor`/`channel` son la identidad real del origen (arquitectura §7):
-    llegan hasta run_loop y quedan en cada registro de audit.
+    llegan hasta run_loop y quedan en cada registro de audit. Son
+    obligatorios: fabricar identidad por default falsea el audit (B-7).
     """
+    if not actor or not channel:
+        raise TypeError("actor y channel son obligatorios: la identidad "
+                        "viene del canal autenticado, nunca de un default")
     log_decision(
         audit_path, actor=actor, action="route", channel=channel,
         result="L2",
@@ -123,16 +132,23 @@ def route_l0(text: str) -> Handler | None:
 
 def classify_l1(text: str) -> Handler | None:
     words = _words(text)
-    for keywords, handler in L1_KEYWORDS:
-        if words & keywords:
-            return handler
+    matches = [(k, h) for k, h in L1_KEYWORDS if words & k]
+    if matches:
+        # Empate entre familias ("estado de los problemas" matchea las dos):
+        # prioridad DECLARADA hacia el resumen de estado — la respuesta
+        # genérica segura; la guía de ACK es instruccional (A-4).
+        for _keywords, handler in matches:
+            if handler is handle_estado:
+                return handler
+        return matches[0][1]
     if _ESTADO_RE.search(text.translate(_ACENTOS).lower()):
         return handle_estado
     return None
 
 
 def route(text: str, client: ZabbixReader,
-          actor: str = "l2", channel: str = "lab",
+          actor: str = "", channel: str = "",
+          role: str = "operator", on_denied: DeniedHook = None,
           audit_path: str = "audit.jsonl") -> tuple[str, str]:
     """Devuelve (nivel, respuesta). Niveles: L0 | L1 | L2.
 
@@ -142,6 +158,9 @@ def route(text: str, client: ZabbixReader,
     la decisión L2 la registra `handle_l2` (así cubre también a los
     llamadores directos).
     """
+    if not actor or not channel:
+        raise TypeError("actor y channel son obligatorios: la identidad "
+                        "viene del canal autenticado, nunca de un default")
     handler = route_l0(text)
     if handler is not None:
         _log_route(audit_path, actor, channel, "L0", handler.__name__, text)
@@ -151,6 +170,7 @@ def route(text: str, client: ZabbixReader,
         _log_route(audit_path, actor, channel, "L1", handler.__name__, text)
         return ("L1", handler(client))
     return ("L2", handle_l2(text, actor=actor, channel=channel,
+                            role=role, on_denied=on_denied,
                             audit_path=audit_path))
 
 

@@ -102,6 +102,6 @@ def test_l2_answer_fluye_por_el_gate_curado(tmp_path):
 
     log = tmp_path / "audit.jsonl"
     text = handle_l2("creá un host", model=FakeModel(), client=FakeMCP(),
-                     audit_path=log)
+                     actor="ana", channel="lab", audit_path=log)
     assert text == "Crear no está permitido."
     assert "denegado" in log.read_text(encoding="utf-8")
